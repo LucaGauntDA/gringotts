@@ -1,6 +1,6 @@
 import React, { useState, useRef } from 'react';
 import type { User, Transaction } from '../types';
-import { SendIcon, HistoryIcon } from './icons';
+import { SendIcon, HistoryIcon, CrownIcon, UsersIcon } from './icons';
 import { knutsToCurrency, currencyToKnuts, formatCurrency } from '../utils';
 
 
@@ -9,6 +9,8 @@ interface DashboardProps {
   users: User[];
   transactions: Transaction[];
   onSendMoney: (receiverId: string, amountInKnuts: number) => void;
+  isKing?: boolean;
+  globalTransactions?: Transaction[];
 }
 
 const houseTextColors: { [key: string]: string } = {
@@ -47,13 +49,15 @@ const HouseDot: React.FC<{ house?: string }> = ({ house }) => {
 const commonInputStyles = "w-full p-3 bg-black/20 border border-white/20 rounded-xl focus:ring-2 focus:ring-white focus:outline-none transition-shadow text-base";
 const containerStyles = "bg-[#FFFFFF21] rounded-3xl p-6 border border-[#FFFFFF59]";
 
-const Dashboard: React.FC<DashboardProps> = ({ currentUser, users, transactions, onSendMoney }) => {
+const Dashboard: React.FC<DashboardProps> = ({ currentUser, users, transactions, onSendMoney, isKing = false, globalTransactions = [] }) => {
   const [receiverId, setReceiverId] = useState('');
   const [galleons, setGalleons] = useState<string>('');
   const [sickles, setSickles] = useState<string>('');
   const [knuts, setKnuts] = useState<string>('');
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
+  const [activeView, setActiveView] = useState<'user' | 'king'>('user');
+
 
   const handleSendMoney = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -101,8 +105,75 @@ const Dashboard: React.FC<DashboardProps> = ({ currentUser, users, transactions,
 
   const { galleons: balanceG, sickles: balanceS, knuts: balanceK } = knutsToCurrency(currentUser.balance);
 
+  const KingView = () => (
+    <div className="space-y-8">
+      <div>
+        <h3 className="text-2xl font-bold mb-4 flex items-center gap-3"><UsersIcon /> Alle Nutzer</h3>
+        <div className="overflow-y-auto max-h-[40vh] pr-2 space-y-2">
+          {users.map(user => (
+            <div key={user.id} className="bg-black/30 p-3 rounded-xl flex justify-between items-center">
+              <div>
+                <p className={`font-semibold ${houseTextColors[user.house]}`}>
+                  <HouseDot house={user.house} />
+                  {user.name}
+                </p>
+                <p className="text-xs opacity-70">{user.house}</p>
+              </div>
+              <p className="font-bold text-lg">{formatCurrency(user.balance)}</p>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div>
+        <h3 className="text-2xl font-bold mb-4 flex items-center gap-3"><HistoryIcon /> Alle Transaktionen</h3>
+        <div className="overflow-y-auto max-h-[40vh] pr-2 space-y-2">
+          {globalTransactions.map(t => (
+            <li key={t.id} className="bg-black/30 p-3 rounded-xl flex justify-between items-center list-none">
+              <div>
+                <p className="font-semibold text-sm">
+                  <span className={`inline-flex items-center ${t.sender?.house && houseTextColors[t.sender.house]}`}>
+                    <HouseDot house={t.sender?.house} />
+                    {t.sender?.name || 'Unbekannt'}
+                  </span>
+                  <span className="opacity-70 mx-1">→</span>
+                  <span className={`inline-flex items-center ${t.receiver?.house && houseTextColors[t.receiver.house]}`}>
+                    <HouseDot house={t.receiver?.house} />
+                    {t.receiver?.name || 'Unbekannt'}
+                  </span>
+                </p>
+                <p className="text-xs opacity-70">{new Date(t.created_at).toLocaleString('de-DE')}</p>
+              </div>
+              <p className="font-bold">{formatCurrency(t.amount)}</p>
+            </li>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+
+
   return (
     <div className="container mx-auto p-4 pt-24 md:pt-28">
+      {isKing && (
+        <div className="mb-6 flex justify-center">
+          <div className="bg-[#FFFFFF21] p-1.5 rounded-full flex gap-2">
+            <button 
+              onClick={() => setActiveView('user')}
+              className={`px-6 py-2 rounded-full font-bold transition-colors ${activeView === 'user' ? 'bg-white text-black' : 'hover:bg-white/10'}`}
+            >
+              Mein Konto
+            </button>
+            <button 
+              onClick={() => setActiveView('king')}
+              className={`px-6 py-2 rounded-full font-bold transition-colors flex items-center gap-2 ${activeView === 'king' ? 'bg-white text-black' : 'hover:bg-white/10'}`}
+            >
+              <CrownIcon className="w-5 h-5" />
+              Königliche Übersicht
+            </button>
+          </div>
+        </div>
+      )}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         {/* Left Column: Balance and Send Money */}
         <div className="lg:col-span-1 space-y-8">
@@ -167,36 +238,42 @@ const Dashboard: React.FC<DashboardProps> = ({ currentUser, users, transactions,
 
         {/* Right Column: Transaction History */}
         <div className={`lg:col-span-2 ${containerStyles}`}>
-          <h2 className="text-3xl sm:text-[2.25rem] font-bold mb-4 flex items-center gap-3 leading-tight"><HistoryIcon /> Transaktionen</h2>
-          <div className="overflow-y-auto max-h-[50vh] lg:max-h-[65vh] pr-2">
-            {userTransactions.length > 0 ? (
-              <ul className="space-y-3">
-                {userTransactions.map(t => {
-                  const isSender = t.sender_id === currentUser.id;
-                  const otherUser = isSender ? t.receiver : t.sender;
-                  return (
-                    <li key={t.id} className="bg-black/30 p-4 rounded-2xl flex justify-between items-center">
-                      <div>
-                        <p className="font-semibold">
-                          {isSender ? 'An ' : 'Von '}
-                          <span className={`inline-flex items-center ${otherUser?.house && houseTextColors[otherUser.house]}`}>
-                            <HouseDot house={otherUser?.house} />
-                            {otherUser?.name || 'Unbekannt'}
-                          </span>
-                        </p>
-                        <p className="text-xs opacity-70">{new Date(t.created_at).toLocaleString('de-DE')}</p>
-                      </div>
-                      <p className={`font-bold text-lg ${isSender ? 'text-red-400' : 'text-green-400'}`}>
-                        {isSender ? '-' : '+'} {formatCurrency(t.amount)}
-                      </p>
-                    </li>
-                  );
-                })}
-              </ul>
-            ) : (
-              <p className="opacity-70 text-center py-8">Keine Transaktionen vorhanden.</p>
-            )}
-          </div>
+          {isKing && activeView === 'king' ? (
+            <KingView />
+          ) : (
+            <>
+              <h2 className="text-3xl sm:text-[2.25rem] font-bold mb-4 flex items-center gap-3 leading-tight"><HistoryIcon /> Transaktionen</h2>
+              <div className="overflow-y-auto max-h-[50vh] lg:max-h-[65vh] pr-2">
+                {userTransactions.length > 0 ? (
+                  <ul className="space-y-3">
+                    {userTransactions.map(t => {
+                      const isSender = t.sender_id === currentUser.id;
+                      const otherUser = isSender ? t.receiver : t.sender;
+                      return (
+                        <li key={t.id} className="bg-black/30 p-4 rounded-2xl flex justify-between items-center">
+                          <div>
+                            <p className="font-semibold">
+                              {isSender ? 'An ' : 'Von '}
+                              <span className={`inline-flex items-center ${otherUser?.house && houseTextColors[otherUser.house]}`}>
+                                <HouseDot house={otherUser?.house} />
+                                {otherUser?.name || 'Unbekannt'}
+                              </span>
+                            </p>
+                            <p className="text-xs opacity-70">{new Date(t.created_at).toLocaleString('de-DE')}</p>
+                          </div>
+                          <p className={`font-bold text-lg ${isSender ? 'text-red-400' : 'text-green-400'}`}>
+                            {isSender ? '-' : '+'} {formatCurrency(t.amount)}
+                          </p>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                ) : (
+                  <p className="opacity-70 text-center py-8">Keine Transaktionen vorhanden.</p>
+                )}
+              </div>
+            </>
+          )}
         </div>
       </div>
     </div>

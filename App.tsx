@@ -10,6 +10,8 @@ import ConnectionErrorScreen from './components/ConnectionErrorScreen';
 import { supabase, isSupabaseConfigured } from './supabaseClient';
 import type { AuthSession } from '@supabase/supabase-js';
 
+const KING_EMAIL = 'luca.lombino@icloud.com';
+
 const App: React.FC = () => {
   const [session, setSession] = useState<AuthSession | null>(null);
   const [users, setUsers] = useState<User[]>([]);
@@ -19,16 +21,22 @@ const App: React.FC = () => {
   const [authError, setAuthError] = useState<string | null>(null);
   const [connectionError, setConnectionError] = useState<string | null>(null);
   const [emailForVerification, setEmailForVerification] = useState<string | null>(null);
+  const [isKing, setIsKing] = useState(false);
+  const [globalTransactions, setGlobalTransactions] = useState<Transaction[]>([]);
 
   const refreshData = useCallback(async () => {
-    // This function now throws on error, to be caught by callers.
     const { data: { session }, error: sessionError } = await supabase.auth.getSession();
     if(sessionError) throw sessionError;
+
+    const userIsKing = session?.user?.email === KING_EMAIL;
+    setIsKing(userIsKing);
 
      if (!session?.user) {
         setCurrentUser(null);
         setUsers([]);
         setTransactions([]);
+        setGlobalTransactions([]);
+        setIsKing(false);
         return;
     }
 
@@ -53,6 +61,18 @@ const App: React.FC = () => {
     } else {
         setTransactions([]);
     }
+
+    if (userIsKing) {
+      const { data: globalTransData, error: globalTransError } = await supabase
+          .from('transactions')
+          .select('*, sender:users!sender_id(id, name, house), receiver:users!receiver_id(id, name, house)')
+          .order('created_at', { ascending: false });
+      
+      if (globalTransError) throw globalTransError;
+      setGlobalTransactions(globalTransData || []);
+    } else {
+        setGlobalTransactions([]);
+    }
   }, []);
   
   const initialLoad = useCallback(async () => {
@@ -67,7 +87,7 @@ const App: React.FC = () => {
 
     try {
         const dataPromise = refreshData();
-        const timeoutPromise = new Promise(resolve => setTimeout(resolve, 1500)); // Reduced timeout for faster feedback on real errors
+        const timeoutPromise = new Promise(resolve => setTimeout(resolve, 1500));
         await Promise.all([dataPromise, timeoutPromise]);
     } catch (error: any) {
         console.error("Error loading initial data:", error);
@@ -85,7 +105,6 @@ const App: React.FC = () => {
   useEffect(() => {
     initialLoad();
 
-    // Listen for auth state changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, newSession) => {
         setSession(newSession);
         if(newSession) {
@@ -94,6 +113,13 @@ const App: React.FC = () => {
                     setConnectionError('Verbindung zum Server verloren. Bitte überprüfe deine Internetverbindung.');
                  }
             });
+        } else {
+            // Handles logout
+            setCurrentUser(null);
+            setUsers([]);
+            setTransactions([]);
+            setGlobalTransactions([]);
+            setIsKing(false);
         }
     });
 
@@ -173,9 +199,7 @@ const App: React.FC = () => {
 
   const handleLogout = async () => {
     await supabase.auth.signOut();
-    setCurrentUser(null);
-    setTransactions([]);
-    setUsers([]);
+    // onAuthStateChange will handle state cleanup
     setEmailForVerification(null);
   };
 
@@ -230,6 +254,8 @@ const App: React.FC = () => {
             users={users}
             transactions={transactions}
             onSendMoney={handleSendMoney}
+            isKing={isKing}
+            globalTransactions={globalTransactions}
           />
         )}
       </main>
