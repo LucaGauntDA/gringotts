@@ -4,7 +4,6 @@ export interface User {
   name: string;
   house: House;
   balance: number; // Stored in the smallest denomination: Knuts
-  is_admin?: boolean; // Supabase uses snake_case
 }
 
 export interface Transaction {

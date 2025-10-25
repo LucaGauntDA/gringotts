@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { House } from '../types';
-import { InfoIcon } from './icons';
+import { InfoIcon, EyeIcon, EyeSlashIcon } from './icons';
 
 interface LoginScreenProps {
   onLogin: (identifier: string, password: string) => void;
@@ -22,6 +22,7 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin, onRegister, error })
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [house, setHouse] = useState<House | null>(null);
   const [localError, setLocalError] = useState('');
   const [showInfoModal, setShowInfoModal] = useState(false);
@@ -49,6 +50,7 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin, onRegister, error })
   const clearForm = () => {
     setName('');
     setPassword('');
+    setShowPassword(false);
     setEmail('');
     setHouse(null);
     setLocalError('');
@@ -71,15 +73,15 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin, onRegister, error })
             </div>
         </div>
       )}
-      <div className="min-h-screen flex items-center justify-center p-4 pt-28">
+      <div className="min-h-screen flex items-center justify-center p-4 pt-24 md:pt-28">
         <div className="w-full max-w-md mx-auto">
-          <h1 className="text-[3.25rem] font-black text-center mb-8 leading-tight">
+          <h1 className="text-4xl sm:text-[3.25rem] font-black text-center mb-8 leading-tight">
             Willkommen bei Gringotts
           </h1>
-          <div className="bg-[#FFFFFF21] rounded-3xl p-8 border border-[#FFFFFF59]">
+          <div className="bg-[#FFFFFF21] rounded-3xl p-6 sm:p-8 border border-[#FFFFFF59]">
             {isRegistering ? (
               <form onSubmit={handleRegister} className="space-y-6">
-                <h2 className="text-[2.25rem] font-bold text-center leading-tight">Neues Konto</h2>
+                <h2 className="text-3xl sm:text-[2.25rem] font-bold text-center leading-tight">Neues Konto</h2>
                 <div>
                   <label htmlFor="name-reg" className="block mb-2 text-sm font-medium opacity-80">Name</label>
                   <input
@@ -111,15 +113,25 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin, onRegister, error })
                 </div>
                  <div>
                   <label htmlFor="password-reg" className="block mb-2 text-sm font-medium opacity-80">Passwort</label>
-                  <input
-                    type="password"
-                    id="password-reg"
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    className={commonInputStyles}
-                    placeholder="Passwort"
-                    required
-                  />
+                  <div className="relative">
+                    <input
+                      type={showPassword ? 'text' : 'password'}
+                      id="password-reg"
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      className={commonInputStyles}
+                      placeholder="Passwort"
+                      required
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowPassword(!showPassword)}
+                      className="absolute inset-y-0 right-0 flex items-center pr-4 text-white/70 hover:text-white"
+                      aria-label={showPassword ? "Passwort ausblenden" : "Passwort anzeigen"}
+                    >
+                      {showPassword ? <EyeSlashIcon /> : <EyeIcon />}
+                    </button>
+                  </div>
                 </div>
                 <div>
                   <label className="block mb-2 text-sm font-medium opacity-80">Haus</label>
@@ -144,7 +156,7 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin, onRegister, error })
               </form>
             ) : (
               <form onSubmit={handleLogin} className="space-y-6">
-                <h2 className="text-[2.25rem] font-bold text-center leading-tight">Einloggen</h2>
+                <h2 className="text-3xl sm:text-[2.25rem] font-bold text-center leading-tight">Einloggen</h2>
                 <div>
                   <label htmlFor="email-login" className="block mb-2 text-sm font-medium opacity-80">E-Mail</label>
                    <input
@@ -159,15 +171,25 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin, onRegister, error })
                 </div>
                  <div>
                   <label htmlFor="password-login" className="block mb-2 text-sm font-medium opacity-80">Passwort</label>
-                  <input
-                    type="password"
-                    id="password-login"
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    className={commonInputStyles}
-                    placeholder="Passwort"
-                    required
-                  />
+                   <div className="relative">
+                    <input
+                      type={showPassword ? 'text' : 'password'}
+                      id="password-login"
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      className={commonInputStyles}
+                      placeholder="Passwort"
+                      required
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowPassword(!showPassword)}
+                      className="absolute inset-y-0 right-0 flex items-center pr-4 text-white/70 hover:text-white"
+                      aria-label={showPassword ? "Passwort ausblenden" : "Passwort anzeigen"}
+                    >
+                      {showPassword ? <EyeSlashIcon /> : <EyeIcon />}
+                    </button>
+                  </div>
                 </div>
                 {error && <p className="text-red-400 text-sm text-center">{error}</p>}
                 <button type="submit" className="w-full text-black bg-white hover:bg-gray-200 focus:ring-4 focus:outline-none focus:ring-gray-300 font-bold rounded-full text-base px-5 text-center transition-colors duration-300 h-[3.75rem]">

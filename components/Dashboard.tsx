@@ -102,7 +102,7 @@ const Dashboard: React.FC<DashboardProps> = ({ currentUser, users, transactions,
   const { galleons: balanceG, sickles: balanceS, knuts: balanceK } = knutsToCurrency(currentUser.balance);
 
   return (
-    <div className="container mx-auto p-4 pt-28">
+    <div className="container mx-auto p-4 pt-24 md:pt-28">
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         {/* Left Column: Balance and Send Money */}
         <div className="lg:col-span-1 space-y-8">
@@ -115,29 +115,29 @@ const Dashboard: React.FC<DashboardProps> = ({ currentUser, users, transactions,
                   <span className="text-4xl font-bold text-white select-none">{currentUser.name.charAt(0)}</span>
               </div>
               <div>
-                <h2 className={`text-[2.25rem] font-bold mb-1 leading-tight ${houseTextColors[currentUser.house]}`}>{currentUser.name}</h2>
+                <h2 className={`text-3xl sm:text-[2.25rem] font-bold mb-1 leading-tight ${houseTextColors[currentUser.house]}`}>{currentUser.name}</h2>
                 <p className="opacity-80">{currentUser.house}</p>
               </div>
             </div>
             
             <div className="text-center bg-black/30 p-6 rounded-2xl">
                 <p className="opacity-80 text-sm">Aktueller Kontostand</p>
-                <p className="text-5xl font-black text-white tracking-wider">
-                    {balanceG.toLocaleString()} <span className="text-3xl opacity-80 font-semibold">G</span>
+                <p className="text-4xl sm:text-5xl font-black text-white tracking-wider">
+                    {balanceG.toLocaleString()} <span className="text-2xl sm:text-3xl opacity-80 font-semibold">G</span>
                 </p>
                 <div className="flex justify-center gap-6 mt-2">
-                    <p className="text-2xl font-bold text-white/80 tracking-wider">
-                        {balanceS} <span className="text-xl opacity-80 font-semibold">S</span>
+                    <p className="text-xl sm:text-2xl font-bold text-white/80 tracking-wider">
+                        {balanceS} <span className="text-lg sm:text-xl opacity-80 font-semibold">S</span>
                     </p>
-                    <p className="text-2xl font-bold text-white/80 tracking-wider">
-                        {balanceK} <span className="text-xl opacity-80 font-semibold">K</span>
+                    <p className="text-xl sm:text-2xl font-bold text-white/80 tracking-wider">
+                        {balanceK} <span className="text-lg sm:text-xl opacity-80 font-semibold">K</span>
                     </p>
                 </div>
             </div>
           </div>
 
           <div className={containerStyles}>
-            <h2 className="text-[2.25rem] font-bold mb-4 flex items-center gap-3 leading-tight"><SendIcon /> Galleonen Senden</h2>
+            <h2 className="text-3xl sm:text-[2.25rem] font-bold mb-4 flex items-center gap-3 leading-tight"><SendIcon /> Galleonen Senden</h2>
             <form onSubmit={handleSendMoney} className="space-y-4">
               <div>
                 <label htmlFor="receiver" className="block text-sm font-medium opacity-80 mb-1">Empfänger</label>
@@ -167,8 +167,8 @@ const Dashboard: React.FC<DashboardProps> = ({ currentUser, users, transactions,
 
         {/* Right Column: Transaction History */}
         <div className={`lg:col-span-2 ${containerStyles}`}>
-          <h2 className="text-[2.25rem] font-bold mb-4 flex items-center gap-3 leading-tight"><HistoryIcon /> Transaktionen</h2>
-          <div className="overflow-y-auto max-h-[65vh] pr-2">
+          <h2 className="text-3xl sm:text-[2.25rem] font-bold mb-4 flex items-center gap-3 leading-tight"><HistoryIcon /> Transaktionen</h2>
+          <div className="overflow-y-auto max-h-[50vh] lg:max-h-[65vh] pr-2">
             {userTransactions.length > 0 ? (
               <ul className="space-y-3">
                 {userTransactions.map(t => {
