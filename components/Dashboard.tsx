@@ -22,7 +22,8 @@ const UserEditModal: React.FC<{
   onClose: () => void;
   onSave: (userId: string, updates: { name: string; house: House; balance: number }) => Promise<void>;
   onDelete: (userId: string) => Promise<void>;
-}> = ({ user, onClose, onSave, onDelete }) => {
+  isEditingSelf: boolean;
+}> = ({ user, onClose, onSave, onDelete, isEditingSelf }) => {
   const [name, setName] = useState(user.name);
   const [house, setHouse] = useState(user.house);
   const [galleons, setGalleons] = useState('');
@@ -108,10 +109,12 @@ const UserEditModal: React.FC<{
                         </div>
                          {error && <p className="text-red-400 text-sm">{error}</p>}
                         <div className="flex gap-4 pt-4">
-                           <button onClick={() => setShowConfirmDelete(true)} className="w-1/3 text-white bg-red-600/80 hover:bg-red-600 font-bold rounded-full text-base px-5 text-center h-12 transition-colors flex items-center justify-center gap-2">
-                                <TrashIcon className="w-5 h-5" /> Löschen
-                            </button>
-                            <button onClick={handleSave} className="w-2/3 text-black bg-white hover:bg-gray-200 font-bold rounded-full text-base px-5 text-center h-12 transition-colors">
+                           {!isEditingSelf && (
+                                <button onClick={() => setShowConfirmDelete(true)} className="w-1/3 text-white bg-red-600/80 hover:bg-red-600 font-bold rounded-full text-base px-5 text-center h-12 transition-colors flex items-center justify-center gap-2">
+                                    <TrashIcon className="w-5 h-5" /> Löschen
+                                </button>
+                           )}
+                            <button onClick={handleSave} className={`${isEditingSelf ? 'w-full' : 'w-2/3'} text-black bg-white hover:bg-gray-200 font-bold rounded-full text-base px-5 text-center h-12 transition-colors`}>
                                 Speichern
                             </button>
                         </div>
@@ -225,9 +228,8 @@ const Dashboard: React.FC<DashboardProps> = ({ currentUser, users, transactions,
         <div className="overflow-y-auto max-h-[65vh] pr-2 space-y-2">
           {activeUsers.map(user => (
             <button key={user.id} 
-              onClick={() => user.id !== currentUser.id && setEditingUser(user)}
-              className={`w-full bg-black/30 p-3 rounded-xl flex justify-between items-center text-left ${user.id !== currentUser.id ? 'hover:bg-black/50 transition-colors cursor-pointer' : 'cursor-default'}`}
-              disabled={user.id === currentUser.id}
+              onClick={() => setEditingUser(user)}
+              className="w-full bg-black/30 p-3 rounded-xl flex justify-between items-center text-left hover:bg-black/50 transition-colors cursor-pointer"
               aria-label={`Nutzer ${user.name} bearbeiten`}
             >
               <div>
@@ -302,7 +304,7 @@ const Dashboard: React.FC<DashboardProps> = ({ currentUser, users, transactions,
 
   return (
     <>
-    {editingUser && <UserEditModal user={editingUser} onClose={() => setEditingUser(null)} onSave={onUpdateUser} onDelete={onSoftDeleteUser} />}
+    {editingUser && <UserEditModal user={editingUser} onClose={() => setEditingUser(null)} onSave={onUpdateUser} onDelete={onSoftDeleteUser} isEditingSelf={editingUser.id === currentUser.id} />}
     <div className="container mx-auto p-4 pt-24 md:pt-28">
       {isKing && (
         <div className="mb-6 flex justify-center">
