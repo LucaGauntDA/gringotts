@@ -7,6 +7,7 @@ import Dashboard from './components/Dashboard';
 import Header from './components/Header';
 import LoadingScreen from './components/LoadingScreen';
 import ConnectionErrorScreen from './components/ConnectionErrorScreen';
+import AccountDeletedScreen from './components/AccountDeletedScreen';
 import { supabase, isSupabaseConfigured } from './supabaseClient';
 import type { AuthSession } from '@supabase/supabase-js';
 
@@ -48,6 +49,13 @@ const App: React.FC = () => {
     setUsers(usersData || []);
 
     const currentUserData = usersData?.find(u => u.id === session.user.id) || null;
+    
+    if (currentUserData?.is_deleted) {
+      // Set current user with a flag to show the deleted screen, but don't let them access dashboard
+      setCurrentUser({ ...currentUserData, is_deleted: true });
+      return;
+    }
+    
     setCurrentUser(currentUserData);
     
     if (currentUserData) {
@@ -213,11 +221,53 @@ const App: React.FC = () => {
     });
     
     if (error) {
-        console.error("Transaction failed:", error);
+        console.error("Transaction failed:", JSON.stringify(error, null, 2));
         if (error.message.includes('Failed to fetch')) {
              throw new Error('Verbindung zum Server fehlgeschlagen.');
         }
-        throw new Error(error.message || 'Überweisung fehlgeschlagen.');
+        throw new Error(`Überweisung fehlgeschlagen: ${error.message}`);
+    }
+    await refreshData();
+  };
+
+  const handleUpdateUser = async (userId: string, updates: { name: string, house: House, balance: number }) => {
+    const { data, error } = await supabase.from('users').update(updates).eq('id', userId).select();
+    if (error) {
+        console.error("User update failed:", JSON.stringify(error, null, 2));
+        throw new Error(`Aktualisierung des Nutzers fehlgeschlagen: ${error.message}`);
+    }
+    if (!data || data.length === 0) {
+      throw new Error('Aktualisierung fehlgeschlagen. Überprüfe die RLS-Richtlinien in Supabase. Der "King"-Nutzer benötigt die Berechtigung, andere Nutzer zu aktualisieren.');
+    }
+    await refreshData();
+  };
+
+  const handleSoftDeleteUser = async (userId: string) => {
+    const { data, error } = await supabase.from('users').update({ is_deleted: true }).eq('id', userId).select();
+    if (error) {
+        console.error("User delete failed:", JSON.stringify(error, null, 2));
+        if (error.message.toLowerCase().includes("schema cache") || error.message.toLowerCase().includes("does not exist")) {
+             throw new Error("Datenbank-Schema-Fehler: Die Spalte 'is_deleted' scheint in der API nicht bekannt zu sein. Bitte lade das Schema in den Supabase-Einstellungen neu (API > Schema).");
+        }
+        throw new Error(`Löschen des Nutzers fehlgeschlagen: ${error.message}`);
+    }
+    if (!data || data.length === 0) {
+      throw new Error('Löschen des Nutzers fehlgeschlagen. Dies liegt wahrscheinlich an den RLS-Richtlinien (Row Level Security) in Supabase. Stelle sicher, dass der King-Nutzer die Berechtigung hat, andere Nutzer zu aktualisieren.');
+    }
+    await refreshData();
+  };
+  
+  const handleRestoreUser = async (userId: string) => {
+    const { data, error } = await supabase.from('users').update({ is_deleted: false }).eq('id', userId).select();
+     if (error) {
+        console.error("User restore failed:", JSON.stringify(error, null, 2));
+        if (error.message.toLowerCase().includes("schema cache") || error.message.toLowerCase().includes("does not exist")) {
+            throw new Error("Datenbank-Schema-Fehler: Die Spalte 'is_deleted' scheint in der API nicht bekannt zu sein. Bitte lade das Schema in den Supabase-Einstellungen neu (API > Schema).");
+        }
+        throw new Error(`Wiederherstellung des Nutzers fehlgeschlagen: ${error.message}`);
+    }
+    if (!data || data.length === 0) {
+      throw new Error('Wiederherstellung fehlgeschlagen. Dies liegt wahrscheinlich an den RLS-Richtlinien (Row Level Security) in Supabase. Stelle sicher, dass der King-Nutzer die Berechtigung hat, andere Nutzer zu aktualisieren.');
     }
     await refreshData();
   };
@@ -232,9 +282,11 @@ const App: React.FC = () => {
 
   return (
     <div className="bg-[#121212] min-h-screen">
-      <Header currentUser={currentUser} onLogout={handleLogout} />
+      <Header currentUser={currentUser && !currentUser.is_deleted ? currentUser : null} onLogout={handleLogout} />
       <main>
-        {!currentUser ? (
+        {currentUser && currentUser.is_deleted ? (
+          <AccountDeletedScreen />
+        ) : !currentUser ? (
           emailForVerification ? (
             <OtpScreen 
               email={emailForVerification} 
@@ -256,6 +308,9 @@ const App: React.FC = () => {
             onSendMoney={handleSendMoney}
             isKing={isKing}
             globalTransactions={globalTransactions}
+            onUpdateUser={handleUpdateUser}
+            onSoftDeleteUser={handleSoftDeleteUser}
+            onRestoreUser={handleRestoreUser}
           />
         )}
       </main>

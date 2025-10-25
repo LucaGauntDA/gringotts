@@ -4,6 +4,7 @@ export interface User {
   name: string;
   house: House;
   balance: number; // Stored in the smallest denomination: Knuts
+  is_deleted?: boolean;
 }
 
 export interface Transaction {

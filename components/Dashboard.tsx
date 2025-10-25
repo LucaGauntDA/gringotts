@@ -1,6 +1,7 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import type { User, Transaction } from '../types';
-import { SendIcon, HistoryIcon, CrownIcon, UsersIcon } from './icons';
+import { House } from '../types';
+import { SendIcon, HistoryIcon, CrownIcon, UsersIcon, TrashIcon, RestoreIcon, UserEditIcon } from './icons';
 import { knutsToCurrency, currencyToKnuts, formatCurrency } from '../utils';
 
 
@@ -11,7 +12,117 @@ interface DashboardProps {
   onSendMoney: (receiverId: string, amountInKnuts: number) => void;
   isKing?: boolean;
   globalTransactions?: Transaction[];
+  onUpdateUser: (userId: string, updates: { name: string; house: House; balance: number }) => Promise<void>;
+  onSoftDeleteUser: (userId: string) => Promise<void>;
+  onRestoreUser: (userId: string) => Promise<void>;
 }
+
+const UserEditModal: React.FC<{
+  user: User;
+  onClose: () => void;
+  onSave: (userId: string, updates: { name: string; house: House; balance: number }) => Promise<void>;
+  onDelete: (userId: string) => Promise<void>;
+}> = ({ user, onClose, onSave, onDelete }) => {
+  const [name, setName] = useState(user.name);
+  const [house, setHouse] = useState(user.house);
+  const [galleons, setGalleons] = useState('');
+  const [sickles, setSickles] = useState('');
+  const [knuts, setKnuts] = useState('');
+  const [error, setError] = useState('');
+  const [showConfirmDelete, setShowConfirmDelete] = useState(false);
+
+  useEffect(() => {
+    const currency = knutsToCurrency(user.balance);
+    setGalleons(String(currency.galleons));
+    setSickles(String(currency.sickles));
+    setKnuts(String(currency.knuts));
+  }, [user]);
+
+  const handleSave = async () => {
+    setError('');
+    if (!name.trim()) {
+      setError('Name darf nicht leer sein.');
+      return;
+    }
+    const balance = currencyToKnuts({
+      galleons: parseInt(galleons) || 0,
+      sickles: parseInt(sickles) || 0,
+      knuts: parseInt(knuts) || 0,
+    });
+    if (balance < 0) {
+      setError('Der Kontostand darf nicht negativ sein.');
+      return;
+    }
+    try {
+      await onSave(user.id, { name: name.trim(), house, balance });
+      onClose();
+    } catch (e: any) {
+      setError(e.message || 'Speichern fehlgeschlagen.');
+    }
+  };
+  
+  const handleDelete = async () => {
+      try {
+          await onDelete(user.id);
+          onClose();
+      } catch (e: any) {
+          setError(e.message || 'Löschen fehlgeschlagen.');
+      }
+  }
+
+  const commonInputStyles = "w-full p-3 bg-black/20 border border-white/20 rounded-xl focus:ring-2 focus:ring-white focus:outline-none transition-shadow text-base";
+
+  return (
+    <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4 animate-fadeIn" onClick={onClose}>
+        <div className="bg-[#2a2a2a] rounded-3xl p-8 border border-[#FFFFFF59] max-w-md w-full" onClick={e => e.stopPropagation()}>
+            {showConfirmDelete ? (
+                <div className="text-center">
+                    <h3 className="text-xl font-bold mb-2">Nutzer wirklich löschen?</h3>
+                    <p className="opacity-80 mb-6">Möchtest du {user.name} wirklich löschen? Der Nutzer kann wiederhergestellt werden.</p>
+                    <div className="flex gap-4">
+                        <button onClick={() => setShowConfirmDelete(false)} className="w-full text-white bg-white/10 hover:bg-white/20 font-bold rounded-full text-base px-5 text-center h-12 transition-colors">Abbrechen</button>
+                        <button onClick={handleDelete} className="w-full text-white bg-red-600 hover:bg-red-700 font-bold rounded-full text-base px-5 text-center h-12 transition-colors">Löschen</button>
+                    </div>
+                </div>
+            ) : (
+                <>
+                    <h3 className="text-2xl font-bold mb-6 flex items-center gap-3"><UserEditIcon /> Nutzer bearbeiten</h3>
+                    <div className="space-y-4">
+                        <div>
+                            <label className="block text-sm font-medium opacity-80 mb-1">Name</label>
+                            <input type="text" value={name} onChange={e => setName(e.target.value)} className={commonInputStyles} />
+                        </div>
+                        <div>
+                            <label className="block text-sm font-medium opacity-80 mb-1">Haus</label>
+                            <select value={house} onChange={e => setHouse(e.target.value as House)} className={commonInputStyles}>
+                                {Object.values(House).map(h => <option key={h} value={h}>{h}</option>)}
+                            </select>
+                        </div>
+                        <div>
+                            <label className="block text-sm font-medium opacity-80 mb-1">Kontostand</label>
+                            <div className="grid grid-cols-3 gap-2">
+                                <input type="number" value={galleons} onChange={e => setGalleons(e.target.value)} min="0" placeholder="Galleonen" className={`${commonInputStyles} text-center`} />
+                                <input type="number" value={sickles} onChange={e => setSickles(e.target.value)} min="0" placeholder="Sickel" className={`${commonInputStyles} text-center`} />
+                                <input type="number" value={knuts} onChange={e => setKnuts(e.target.value)} min="0" placeholder="Knuts" className={`${commonInputStyles} text-center`} />
+                            </div>
+                        </div>
+                         {error && <p className="text-red-400 text-sm">{error}</p>}
+                        <div className="flex gap-4 pt-4">
+                           <button onClick={() => setShowConfirmDelete(true)} className="w-1/3 text-white bg-red-600/80 hover:bg-red-600 font-bold rounded-full text-base px-5 text-center h-12 transition-colors flex items-center justify-center gap-2">
+                                <TrashIcon className="w-5 h-5" /> Löschen
+                            </button>
+                            <button onClick={handleSave} className="w-2/3 text-black bg-white hover:bg-gray-200 font-bold rounded-full text-base px-5 text-center h-12 transition-colors">
+                                Speichern
+                            </button>
+                        </div>
+                    </div>
+                </>
+            )}
+        </div>
+    </div>
+  )
+}
+
 
 const houseTextColors: { [key: string]: string } = {
   Gryffindor: 'text-red-400',
@@ -49,14 +160,15 @@ const HouseDot: React.FC<{ house?: string }> = ({ house }) => {
 const commonInputStyles = "w-full p-3 bg-black/20 border border-white/20 rounded-xl focus:ring-2 focus:ring-white focus:outline-none transition-shadow text-base";
 const containerStyles = "bg-[#FFFFFF21] rounded-3xl p-6 border border-[#FFFFFF59]";
 
-const Dashboard: React.FC<DashboardProps> = ({ currentUser, users, transactions, onSendMoney, isKing = false, globalTransactions = [] }) => {
+const Dashboard: React.FC<DashboardProps> = ({ currentUser, users, transactions, onSendMoney, isKing = false, globalTransactions = [], onUpdateUser, onSoftDeleteUser, onRestoreUser }) => {
   const [receiverId, setReceiverId] = useState('');
   const [galleons, setGalleons] = useState<string>('');
   const [sickles, setSickles] = useState<string>('');
   const [knuts, setKnuts] = useState<string>('');
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
-  const [activeView, setActiveView] = useState<'user' | 'king'>('user');
+  const [activeView, setActiveView] = useState<'user' | 'king' | 'deleted'>('user');
+  const [editingUser, setEditingUser] = useState<User | null>(null);
 
 
   const handleSendMoney = async (e: React.FormEvent) => {
@@ -101,33 +213,70 @@ const Dashboard: React.FC<DashboardProps> = ({ currentUser, users, transactions,
     .filter(t => t.sender_id === currentUser.id || t.receiver_id === currentUser.id)
     .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
 
-  const otherUsers = users.filter(u => u.id !== currentUser.id);
+  const activeUsers = users.filter(u => !u.is_deleted);
+  const deletedUsers = users.filter(u => u.is_deleted);
+  const otherUsers = activeUsers.filter(u => u.id !== currentUser.id);
 
   const { galleons: balanceG, sickles: balanceS, knuts: balanceK } = knutsToCurrency(currentUser.balance);
 
-  const KingView = () => (
-    <div className="space-y-8">
-      <div>
-        <h3 className="text-2xl font-bold mb-4 flex items-center gap-3"><UsersIcon /> Alle Nutzer</h3>
-        <div className="overflow-y-auto max-h-[40vh] pr-2 space-y-2">
-          {users.map(user => (
-            <div key={user.id} className="bg-black/30 p-3 rounded-xl flex justify-between items-center">
+  const KingAllUsersView = () => (
+    <div>
+        <h3 className="text-2xl font-bold mb-4 flex items-center gap-3"><UsersIcon /> Alle aktiven Nutzer</h3>
+        <div className="overflow-y-auto max-h-[65vh] pr-2 space-y-2">
+          {activeUsers.map(user => (
+            <button key={user.id} 
+              onClick={() => user.id !== currentUser.id && setEditingUser(user)}
+              className={`w-full bg-black/30 p-3 rounded-xl flex justify-between items-center text-left ${user.id !== currentUser.id ? 'hover:bg-black/50 transition-colors cursor-pointer' : 'cursor-default'}`}
+              disabled={user.id === currentUser.id}
+              aria-label={`Nutzer ${user.name} bearbeiten`}
+            >
               <div>
                 <p className={`font-semibold ${houseTextColors[user.house]}`}>
                   <HouseDot house={user.house} />
-                  {user.name}
+                  {user.name} {user.id === currentUser.id && <span className="text-xs opacity-70">(Du)</span>}
                 </p>
-                <p className="text-xs opacity-70">{user.house}</p>
+                <p className="text-xs opacity-70 ml-[18px]">{user.house}</p>
               </div>
               <p className="font-bold text-lg">{formatCurrency(user.balance)}</p>
-            </div>
+            </button>
           ))}
         </div>
-      </div>
-
+    </div>
+  );
+  
+  const KingDeletedUsersView = () => (
       <div>
+        <h3 className="text-2xl font-bold mb-4 flex items-center gap-3"><TrashIcon /> Gelöschte Nutzer</h3>
+        {deletedUsers.length > 0 ? (
+            <div className="overflow-y-auto max-h-[65vh] pr-2 space-y-2">
+            {deletedUsers.map(user => (
+                <div key={user.id} className="bg-black/30 p-3 rounded-xl flex justify-between items-center">
+                <div>
+                    <p className={`font-semibold ${houseTextColors[user.house]}`}>
+                    <HouseDot house={user.house} />
+                    {user.name}
+                    </p>
+                    <p className="text-xs opacity-70 ml-[18px]">{user.house}</p>
+                </div>
+                <button 
+                    onClick={() => onRestoreUser(user.id)}
+                    className="flex items-center gap-2 bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded-full transition-colors text-sm"
+                >
+                    <RestoreIcon className="w-4 h-4" /> Wiederherstellen
+                </button>
+                </div>
+            ))}
+            </div>
+        ) : (
+            <p className="opacity-70 text-center py-8">Keine gelöschten Nutzer.</p>
+        )}
+      </div>
+  );
+
+  const KingGlobalTransactionsView = () => (
+    <div>
         <h3 className="text-2xl font-bold mb-4 flex items-center gap-3"><HistoryIcon /> Alle Transaktionen</h3>
-        <div className="overflow-y-auto max-h-[40vh] pr-2 space-y-2">
+        <div className="overflow-y-auto max-h-[65vh] pr-2 space-y-2">
           {globalTransactions.map(t => (
             <li key={t.id} className="bg-black/30 p-3 rounded-xl flex justify-between items-center list-none">
               <div>
@@ -148,28 +297,26 @@ const Dashboard: React.FC<DashboardProps> = ({ currentUser, users, transactions,
             </li>
           ))}
         </div>
-      </div>
     </div>
   );
 
-
   return (
+    <>
+    {editingUser && <UserEditModal user={editingUser} onClose={() => setEditingUser(null)} onSave={onUpdateUser} onDelete={onSoftDeleteUser} />}
     <div className="container mx-auto p-4 pt-24 md:pt-28">
       {isKing && (
         <div className="mb-6 flex justify-center">
-          <div className="bg-[#FFFFFF21] p-1.5 rounded-full flex gap-2">
-            <button 
-              onClick={() => setActiveView('user')}
-              className={`px-6 py-2 rounded-full font-bold transition-colors ${activeView === 'user' ? 'bg-white text-black' : 'hover:bg-white/10'}`}
-            >
+          <div className="bg-[#FFFFFF21] p-1.5 rounded-full flex gap-1 sm:gap-2 flex-wrap justify-center">
+            <button onClick={() => setActiveView('user')} className={`px-4 sm:px-6 py-2 rounded-full font-bold transition-colors ${activeView === 'user' ? 'bg-white text-black' : 'hover:bg-white/10'}`}>
               Mein Konto
             </button>
-            <button 
-              onClick={() => setActiveView('king')}
-              className={`px-6 py-2 rounded-full font-bold transition-colors flex items-center gap-2 ${activeView === 'king' ? 'bg-white text-black' : 'hover:bg-white/10'}`}
-            >
+            <button onClick={() => setActiveView('king')} className={`px-4 sm:px-6 py-2 rounded-full font-bold transition-colors flex items-center gap-2 ${activeView === 'king' ? 'bg-white text-black' : 'hover:bg-white/10'}`}>
               <CrownIcon className="w-5 h-5" />
               Königliche Übersicht
+            </button>
+             <button onClick={() => setActiveView('deleted')} className={`px-4 sm:px-6 py-2 rounded-full font-bold transition-colors flex items-center gap-2 ${activeView === 'deleted' ? 'bg-white text-black' : 'hover:bg-white/10'}`}>
+              <TrashIcon className="w-5 h-5" />
+              Gelöschte Nutzer
             </button>
           </div>
         </div>
@@ -236,10 +383,15 @@ const Dashboard: React.FC<DashboardProps> = ({ currentUser, users, transactions,
           </div>
         </div>
 
-        {/* Right Column: Transaction History */}
-        <div className={`lg:col-span-2 ${containerStyles}`}>
+        {/* Right Column: Transaction History / King Views */}
+        <div className={`lg:col-span-2 ${containerStyles} min-h-[50vh]`}>
           {isKing && activeView === 'king' ? (
-            <KingView />
+            <div className="space-y-8">
+                <KingAllUsersView />
+                <KingGlobalTransactionsView />
+            </div>
+          ) : isKing && activeView === 'deleted' ? (
+            <KingDeletedUsersView />
           ) : (
             <>
               <h2 className="text-3xl sm:text-[2.25rem] font-bold mb-4 flex items-center gap-3 leading-tight"><HistoryIcon /> Transaktionen</h2>
@@ -277,6 +429,7 @@ const Dashboard: React.FC<DashboardProps> = ({ currentUser, users, transactions,
         </div>
       </div>
     </div>
+    </>
   );
 };
 
