@@ -1,4 +1,3 @@
-
 export interface User {
   id: string; // This is now the UUID from Supabase Auth
   name: string;
@@ -13,6 +12,7 @@ export interface Transaction {
   receiver_id: string;
   amount: number; // Stored in the smallest denomination: Knuts
   created_at: string; // Timestamp from Supabase is a string
+  note?: string; // Optional note for the transaction
   // For UI rendering, we'll add these properties after fetching
   sender?: { id: string, name: string, house: string };
   receiver?: { id: string, name: string, house: string };

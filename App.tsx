@@ -10,6 +10,7 @@ import ConnectionErrorScreen from './components/ConnectionErrorScreen';
 import AccountDeletedScreen from './components/AccountDeletedScreen';
 import { supabase, isSupabaseConfigured } from './supabaseClient';
 import type { AuthSession } from '@supabase/supabase-js';
+import { formatCurrency } from './utils';
 
 const KING_EMAIL = 'luca.lombino@icloud.com';
 
@@ -62,7 +63,8 @@ const App: React.FC = () => {
         const { data: transData, error: transError } = await supabase
             .from('transactions')
             .select('*, sender:users!sender_id(id, name, house), receiver:users!receiver_id(id, name, house)')
-            .or(`sender_id.eq.${currentUserData.id},receiver_id.eq.${currentUserData.id}`);
+            .or(`sender_id.eq.${currentUserData.id},receiver_id.eq.${currentUserData.id}`)
+            .order('created_at', { ascending: false });
         
         if (transError) throw transError;
         setTransactions(transData || []);
@@ -196,81 +198,99 @@ const App: React.FC = () => {
             password,
         });
         if (signInError) throw signInError;
+        // onAuthStateChange will handle the session update and data refresh
     } catch (error: any) {
         if (error.message.includes("Failed to fetch")) {
-            setAuthError("Verbindung zum Server fehlgeschlagen. Bitte überprüfe deine Internetverbindung und die Supabase-Konfiguration.");
+            setAuthError("Verbindung zum Server fehlgeschlagen. Bitte überprüfe deine Internetverbindung.");
+        } else if (error.message.includes("Invalid login credentials")) {
+            setAuthError("Falsche E-Mail-Adresse oder falsches Passwort.");
         } else {
-            setAuthError('E-Mail oder Passwort ist falsch.');
+            setAuthError(error.message || 'Einloggen fehlgeschlagen.');
         }
     }
   };
 
   const handleLogout = async () => {
     await supabase.auth.signOut();
-    // onAuthStateChange will handle state cleanup
-    setEmailForVerification(null);
+    // onAuthStateChange will clear the state
   };
 
-  const handleSendMoney = async (receiverId: string, amountInKnuts: number) => {
-    if (!currentUser) return;
-    
-    const { error } = await supabase.rpc('send_money', {
-        sender_id_in: currentUser.id,
-        receiver_id_in: receiverId,
-        amount_in: amountInKnuts,
-    });
-    
-    if (error) {
-        console.error("Transaction failed:", JSON.stringify(error, null, 2));
-        if (error.message.includes('Failed to fetch')) {
-             throw new Error('Verbindung zum Server fehlgeschlagen.');
-        }
-        throw new Error(`Überweisung fehlgeschlagen: ${error.message}`);
+  const handleSendMoney = async (receiverIds: string[], amountInKnuts: number, note?: string) => {
+    if (!currentUser) throw new Error("Nicht eingeloggt.");
+    if (amountInKnuts <= 0) throw new Error("Betrag muss positiv sein.");
+    if (receiverIds.length === 0) throw new Error("Kein Empfänger ausgewählt.");
+
+    const totalAmount = amountInKnuts * receiverIds.length;
+    if (totalAmount > currentUser.balance) {
+      throw new Error("Nicht genügend Guthaben.");
     }
+
+    // Use an RPC function to ensure atomic transaction
+    for (const receiverId of receiverIds) {
+        const { error } = await supabase.rpc('send_money', {
+            amount_in: amountInKnuts,
+            note_in: note || '',
+            receiver_id_in: receiverId,
+            sender_id_in: currentUser.id,
+        });
+
+        if (error) {
+            console.error('Transaction error:', error);
+            throw new Error(`Transaktion an ${users.find(u => u.id === receiverId)?.name || 'Unbekannt'} fehlgeschlagen: ${error.message}`);
+        }
+    }
+    
+    // Refresh data after successful transactions
     await refreshData();
   };
 
-  const handleUpdateUser = async (userId: string, updates: { name: string, house: House, balance: number }) => {
-    const { data, error } = await supabase.from('users').update(updates).eq('id', userId).select();
-    if (error) {
-        console.error("User update failed:", JSON.stringify(error, null, 2));
-        throw new Error(`Aktualisierung des Nutzers fehlgeschlagen: ${error.message}`);
+  const handleUpdateUser = async (userId: string, updates: { name: string; house: House; balance: number }) => {
+    if (!isKing) throw new Error("Nur der King kann Nutzerdaten ändern.");
+
+    const originalUser = users.find(u => u.id === userId);
+    if (!originalUser) throw new Error("Nutzer nicht gefunden.");
+
+    const { error } = await supabase
+      .from('users')
+      .update({ name: updates.name, house: updates.house, balance: updates.balance })
+      .eq('id', userId);
+
+    if (error) throw error;
+
+    // Check if balance was changed and log a special transaction if so
+    if (originalUser.balance !== updates.balance && currentUser) {
+        const note = `ADMIN_BALANCE_CHANGE::${currentUser.id}::${updates.balance}`;
+        await supabase.from('transactions').insert({
+            sender_id: currentUser.id, // The King is the "sender" of the change
+            receiver_id: userId,
+            amount: 0, // No actual money transfer, just a log
+            note: note,
+        });
     }
-    if (!data || data.length === 0) {
-      throw new Error('Aktualisierung fehlgeschlagen. Überprüfe die RLS-Richtlinien in Supabase. Der "King"-Nutzer benötigt die Berechtigung, andere Nutzer zu aktualisieren.');
-    }
+
     await refreshData();
   };
 
   const handleSoftDeleteUser = async (userId: string) => {
-    const { data, error } = await supabase.from('users').update({ is_deleted: true }).eq('id', userId).select();
-    if (error) {
-        console.error("User delete failed:", JSON.stringify(error, null, 2));
-        if (error.message.toLowerCase().includes("schema cache") || error.message.toLowerCase().includes("does not exist")) {
-             throw new Error("Datenbank-Schema-Fehler: Die Spalte 'is_deleted' scheint in der API nicht bekannt zu sein. Bitte lade das Schema in den Supabase-Einstellungen neu (API > Schema).");
-        }
-        throw new Error(`Löschen des Nutzers fehlgeschlagen: ${error.message}`);
-    }
-    if (!data || data.length === 0) {
-      throw new Error('Löschen des Nutzers fehlgeschlagen. Dies liegt wahrscheinlich an den RLS-Richtlinien (Row Level Security) in Supabase. Stelle sicher, dass der King-Nutzer die Berechtigung hat, andere Nutzer zu aktualisieren.');
-    }
+    if (!isKing) throw new Error("Nur der King kann Nutzer löschen.");
+    const { error } = await supabase
+        .from('users')
+        .update({ is_deleted: true })
+        .eq('id', userId);
+    if (error) throw error;
     await refreshData();
   };
-  
+
   const handleRestoreUser = async (userId: string) => {
-    const { data, error } = await supabase.from('users').update({ is_deleted: false }).eq('id', userId).select();
-     if (error) {
-        console.error("User restore failed:", JSON.stringify(error, null, 2));
-        if (error.message.toLowerCase().includes("schema cache") || error.message.toLowerCase().includes("does not exist")) {
-            throw new Error("Datenbank-Schema-Fehler: Die Spalte 'is_deleted' scheint in der API nicht bekannt zu sein. Bitte lade das Schema in den Supabase-Einstellungen neu (API > Schema).");
-        }
-        throw new Error(`Wiederherstellung des Nutzers fehlgeschlagen: ${error.message}`);
-    }
-    if (!data || data.length === 0) {
-      throw new Error('Wiederherstellung fehlgeschlagen. Dies liegt wahrscheinlich an den RLS-Richtlinien (Row Level Security) in Supabase. Stelle sicher, dass der King-Nutzer die Berechtigung hat, andere Nutzer zu aktualisieren.');
-    }
+    if (!isKing) throw new Error("Nur der King kann Nutzer wiederherstellen.");
+    const { error } = await supabase
+        .from('users')
+        .update({ is_deleted: false })
+        .eq('id', userId);
+    if (error) throw error;
     await refreshData();
   };
+
 
   if (loading) {
     return <LoadingScreen />;
@@ -280,27 +300,33 @@ const App: React.FC = () => {
     return <ConnectionErrorScreen message={connectionError} onRetry={initialLoad} />;
   }
 
+  if (currentUser?.is_deleted) {
+      return <AccountDeletedScreen />;
+  }
+
   return (
-    <div className="bg-[#121212] min-h-screen">
-      <Header currentUser={currentUser && !currentUser.is_deleted ? currentUser : null} onLogout={handleLogout} />
-      <main>
-        {currentUser && currentUser.is_deleted ? (
-          <AccountDeletedScreen />
-        ) : !currentUser ? (
-          emailForVerification ? (
-            <OtpScreen 
-              email={emailForVerification} 
-              onVerify={handleVerifyOtp}
-              onBack={() => {
-                setEmailForVerification(null);
-                setAuthError(null);
-              }}
-              error={authError}
-            />
-          ) : (
-            <LoginScreen onLogin={handleLogin} onRegister={handleRegister} error={authError} />
-          )
-        ) : (
+    <>
+      <Header currentUser={currentUser} onLogout={handleLogout} />
+      <main className="min-h-screen">
+         {!session ? (
+            emailForVerification ? (
+                 <OtpScreen 
+                    email={emailForVerification}
+                    onVerify={handleVerifyOtp}
+                    onBack={() => {
+                        setEmailForVerification(null);
+                        setAuthError(null);
+                    }}
+                    error={authError}
+                 />
+            ) : (
+                <LoginScreen
+                    onLogin={handleLogin}
+                    onRegister={handleRegister}
+                    error={authError}
+                />
+            )
+         ) : currentUser ? (
           <Dashboard
             currentUser={currentUser}
             users={users}
@@ -312,9 +338,14 @@ const App: React.FC = () => {
             onSoftDeleteUser={handleSoftDeleteUser}
             onRestoreUser={handleRestoreUser}
           />
+        ) : (
+            // This state can happen briefly while currentUser is being fetched after session is set.
+            <div className="flex justify-center items-center h-screen">
+                <div className="w-8 h-8 border-4 border-white/20 border-t-white rounded-full animate-spin"></div>
+            </div>
         )}
       </main>
-    </div>
+    </>
   );
 };
 

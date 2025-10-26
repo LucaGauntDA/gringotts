@@ -1,15 +1,21 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import type { User, Transaction } from '../types';
 import { House } from '../types';
-import { SendIcon, HistoryIcon, CrownIcon, UsersIcon, TrashIcon, RestoreIcon, UserEditIcon } from './icons';
+import { SendIcon, HistoryIcon, CrownIcon, UsersIcon, TrashIcon, RestoreIcon, UserEditIcon, UserIcon, FilterIcon } from './icons';
 import { knutsToCurrency, currencyToKnuts, formatCurrency } from '../utils';
 
+const houseTextColors: { [key: string]: string } = {
+  [House.Gryffindor]: 'text-red-400',
+  [House.Hufflepuff]: 'text-yellow-300',
+  [House.Ravenclaw]: 'text-blue-400',
+  [House.Slytherin]: 'text-green-400',
+};
 
 interface DashboardProps {
   currentUser: User;
   users: User[];
   transactions: Transaction[];
-  onSendMoney: (receiverId: string, amountInKnuts: number) => void;
+  onSendMoney: (receiverIds: string[], amountInKnuts: number, note?: string) => Promise<void>;
   isKing?: boolean;
   globalTransactions?: Transaction[];
   onUpdateUser: (userId: string, updates: { name: string; house: House; balance: number }) => Promise<void>;
@@ -23,7 +29,8 @@ const UserEditModal: React.FC<{
   onSave: (userId: string, updates: { name: string; house: House; balance: number }) => Promise<void>;
   onDelete: (userId: string) => Promise<void>;
   isEditingSelf: boolean;
-}> = ({ user, onClose, onSave, onDelete, isEditingSelf }) => {
+  isKing: boolean;
+}> = ({ user, onClose, onSave, onDelete, isEditingSelf, isKing }) => {
   const [name, setName] = useState(user.name);
   const [house, setHouse] = useState(user.house);
   const [galleons, setGalleons] = useState('');
@@ -50,9 +57,10 @@ const UserEditModal: React.FC<{
       sickles: parseInt(sickles) || 0,
       knuts: parseInt(knuts) || 0,
     });
+    // The King can set a negative balance for anyone, including themself.
     if (balance < 0) {
-      setError('Der Kontostand darf nicht negativ sein.');
-      return;
+        setError('Der Kontostand darf nicht negativ sein.');
+        return;
     }
     try {
       await onSave(user.id, { name: name.trim(), house, balance });
@@ -72,6 +80,7 @@ const UserEditModal: React.FC<{
   }
 
   const commonInputStyles = "w-full p-3 bg-black/20 border border-white/20 rounded-xl focus:ring-2 focus:ring-white focus:outline-none transition-shadow text-base";
+  const canEdit = !isEditingSelf || isKing;
 
   return (
     <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4 animate-fadeIn" onClick={onClose}>
@@ -86,352 +95,564 @@ const UserEditModal: React.FC<{
                     </div>
                 </div>
             ) : (
-                <>
-                    <h3 className="text-2xl font-bold mb-6 flex items-center gap-3"><UserEditIcon /> Nutzer bearbeiten</h3>
+                 <div className="space-y-4 animate-fadeIn">
+                    <h3 className="text-2xl font-bold text-center mb-2">Nutzer bearbeiten</h3>
                     <div className="space-y-4">
                         <div>
-                            <label className="block text-sm font-medium opacity-80 mb-1">Name</label>
-                            <input type="text" value={name} onChange={e => setName(e.target.value)} className={commonInputStyles} />
+                            <label htmlFor="edit-name" className="block mb-2 text-sm font-medium opacity-80">Name</label>
+                            <input id="edit-name" type="text" value={name} onChange={e => setName(e.target.value)} className={commonInputStyles} disabled={!canEdit} />
                         </div>
                         <div>
-                            <label className="block text-sm font-medium opacity-80 mb-1">Haus</label>
-                            <select value={house} onChange={e => setHouse(e.target.value as House)} className={commonInputStyles}>
+                            <label className="block mb-2 text-sm font-medium opacity-80">Haus</label>
+                            <select value={house} onChange={e => setHouse(e.target.value as House)} className={commonInputStyles + ' cursor-pointer'} disabled={!canEdit}>
                                 {Object.values(House).map(h => <option key={h} value={h}>{h}</option>)}
                             </select>
                         </div>
                         <div>
-                            <label className="block text-sm font-medium opacity-80 mb-1">Kontostand</label>
+                            <label className="block mb-2 text-sm font-medium opacity-80">Kontostand</label>
                             <div className="grid grid-cols-3 gap-2">
-                                <input type="number" value={galleons} onChange={e => setGalleons(e.target.value)} min="0" placeholder="Galleonen" className={`${commonInputStyles} text-center`} />
-                                <input type="number" value={sickles} onChange={e => setSickles(e.target.value)} min="0" placeholder="Sickel" className={`${commonInputStyles} text-center`} />
-                                <input type="number" value={knuts} onChange={e => setKnuts(e.target.value)} min="0" placeholder="Knuts" className={`${commonInputStyles} text-center`} />
+                                <input type="number" placeholder="Galleonen" value={galleons} onChange={e => setGalleons(e.target.value)} className={commonInputStyles} disabled={!canEdit} />
+                                <input type="number" placeholder="Sickel" value={sickles} onChange={e => setSickles(e.target.value)} className={commonInputStyles} disabled={!canEdit} />
+                                <input type="number" placeholder="Knut" value={knuts} onChange={e => setKnuts(e.target.value)} className={commonInputStyles} disabled={!canEdit} />
                             </div>
                         </div>
-                         {error && <p className="text-red-400 text-sm">{error}</p>}
-                        <div className="flex gap-4 pt-4">
-                           {!isEditingSelf && (
-                                <button onClick={() => setShowConfirmDelete(true)} className="w-1/3 text-white bg-red-600/80 hover:bg-red-600 font-bold rounded-full text-base px-5 text-center h-12 transition-colors flex items-center justify-center gap-2">
-                                    <TrashIcon className="w-5 h-5" /> Löschen
-                                </button>
-                           )}
-                            <button onClick={handleSave} className={`${isEditingSelf ? 'w-full' : 'w-2/3'} text-black bg-white hover:bg-gray-200 font-bold rounded-full text-base px-5 text-center h-12 transition-colors`}>
-                                Speichern
-                            </button>
+                         {error && <p className="text-red-400 text-sm text-center">{error}</p>}
+                        <div className="flex flex-col sm:flex-row gap-4 pt-2">
+                             {!isEditingSelf && <button onClick={() => setShowConfirmDelete(true)} className="w-full sm:w-auto flex-1 text-white bg-red-600/80 hover:bg-red-600 font-bold rounded-full h-12 transition-colors order-2 sm:order-1">Löschen</button>}
+                            <button onClick={handleSave} className="w-full sm:w-auto flex-1 text-black bg-white hover:bg-gray-200 font-bold rounded-full h-12 transition-colors order-1 sm:order-2" disabled={!canEdit}>Speichern</button>
                         </div>
+                        {isEditingSelf && !isKing && <p className="text-xs text-center opacity-60 pt-2">Du kannst dein eigenes Profil nicht bearbeiten. Bitte den King um Hilfe.</p>}
                     </div>
-                </>
+                </div>
             )}
         </div>
     </div>
-  )
-}
-
-
-const houseTextColors: { [key: string]: string } = {
-  Gryffindor: 'text-red-400',
-  Hufflepuff: 'text-yellow-300',
-  Ravenclaw: 'text-blue-400',
-  Slytherin: 'text-green-400',
+  );
 };
 
-const houseBgColors: { [key: string]: string } = {
-  Gryffindor: 'bg-red-700',
-  Hufflepuff: 'bg-yellow-500',
-  Ravenclaw: 'bg-blue-800',
-  Slytherin: 'bg-green-700',
-};
+const notePlaceholders = [
+    "für Butterbier",
+    "Runde Feuerwhiskey",
+    "Schulden bei den Weasleys",
+    "Neuer Besen",
+    "Zutaten für Vielsafttrank",
+    "Wettgewinn vom Quidditch-Spiel",
+    "Bestechungsgeld für Filch",
+    "Eine Kiste Bertie Botts Bohnen",
+    "Reisekosten für den Fahrenden Ritter",
+    "Reparatur für den kaputten Zauberstab",
+    "Eintritt für die Heulende Hütte",
+    "Ein neues Exemplar von 'Phantastische Tierwesen'",
+    "Kaution für Hagrid",
+    "Spende für S.P.E.W.",
+    "Ein paar Schokofrösche",
+    "Beitrag zur nächsten DA-Sitzung",
+    "Eine Federkiel-Lizenz",
+    "Nachhilfe in Verwandlung",
+    "Ein Heuler für Malfoy",
+    "Karte des Rumtreibers",
+    "Dein Anteil am Honigtopf-Raubzug",
+    "Die neuesten Zauberscherze",
+    "Ein Abo vom Tagespropheten",
+    "Rückzahlung für die Butterbier-Runde",
+    "Neuer Umhang von Madam Malkin's",
+    "Kürbissaft für alle",
+    "Ein Päckchen Zischende Wissbies",
+    "Pflege für einen Hippogreif",
+    "Eine Flasche Veritaserum (nicht fragen)",
+    "Ein Denkarium zum Ausleihen",
+    "Magische Tiernahrung",
+    "Reparaturkosten für das fliegende Auto",
+    "Schweineohren von den Drei Besen",
+    "Gehalt für den Hauself",
+    "Eine seltene Alraune",
+    "Investition in einen portablen Sumpf",
+    "Geld für den nächsten Hogsmeade-Ausflug",
+    "Ein neues Paar Drachenleder-Handschuhe",
+    "Spende an den Orden des Phönix",
+    "Ein neuer Satz Zaubertrank-Fläschchen",
+    "Ein magisches Schachspiel",
+    "Erinnerungsmich-Ersatz",
+    "Eine Kiste Knallbonbons",
+    "Bestellung bei Eeylops Eulenkaufhaus",
+    "Ein seltener Zaubertrank-Aufsatz",
+    "Die Pflege von Krätze",
+    "Ein Pfund Mondkalb-Dung",
+    "Eine Schachtel Lakritz-Zauberstäbe",
+    "Ersatz für den explodierenden Kessel",
+    "Ein verfluchtes Halsband (Scherz!)",
+    "Dein Geburtstagsgeschenk",
+];
 
-const houseBorderColors: { [key: string]: string } = {
-  Gryffindor: 'border-red-500',
-  Hufflepuff: 'border-yellow-400',
-  Ravenclaw: 'border-blue-500',
-  Slytherin: 'border-green-500',
-};
+const SendMoneyView: React.FC<{
+    currentUser: User;
+    users: User[];
+    onSendMoney: (receiverIds: string[], amountInKnuts: number, note?: string) => Promise<void>;
+}> = ({ currentUser, users, onSendMoney }) => {
+    const [receiverIds, setReceiverIds] = useState<string[]>([]);
+    const [galleons, setGalleons] = useState('');
+    const [sickles, setSickles] = useState('');
+    const [knuts, setKnuts] = useState('');
+    const [note, setNote] = useState('');
+    const [error, setError] = useState('');
+    const [success, setSuccess] = useState('');
+    const [searchTerm, setSearchTerm] = useState('');
+    const [selectedHouses, setSelectedHouses] = useState<House[]>([]);
+    const [showFilterMenu, setShowFilterMenu] = useState(false);
+    const filterMenuRef = useRef<HTMLDivElement>(null);
+    const [notePlaceholder, setNotePlaceholder] = useState('z.B. für Butterbier');
 
-const houseDotColors: { [key: string]: string } = {
-    Gryffindor: 'bg-red-500',
-    Hufflepuff: 'bg-yellow-400',
-    Ravenclaw: 'bg-blue-500',
-    Slytherin: 'bg-green-500',
-};
+    useEffect(() => {
+        const randomPlaceholder = notePlaceholders[Math.floor(Math.random() * notePlaceholders.length)];
+        setNotePlaceholder(`z.B. ${randomPlaceholder}`);
+    }, []);
 
-const HouseDot: React.FC<{ house?: string }> = ({ house }) => {
-    if (!house || !houseDotColors[house]) return null;
-    return <span className={`inline-block w-2.5 h-2.5 rounded-full mr-2 align-middle ${houseDotColors[house]}`}></span>;
-}
+    useEffect(() => {
+        const handleClickOutside = (event: MouseEvent) => {
+            if (filterMenuRef.current && !filterMenuRef.current.contains(event.target as Node)) {
+                setShowFilterMenu(false);
+            }
+        };
+        document.addEventListener("mousedown", handleClickOutside);
+        return () => {
+            document.removeEventListener("mousedown", handleClickOutside);
+        };
+    }, []);
 
-const commonInputStyles = "w-full p-3 bg-black/20 border border-white/20 rounded-xl focus:ring-2 focus:ring-white focus:outline-none transition-shadow text-base";
-const containerStyles = "bg-[#FFFFFF21] rounded-3xl p-6 border border-[#FFFFFF59]";
+    const otherUsers = users.filter(u => u.id !== currentUser.id && !u.is_deleted);
+    
+    const handleReceiverToggle = (userId: string) => {
+        setReceiverIds(prev =>
+            prev.includes(userId)
+                ? prev.filter(id => id !== userId)
+                : [...prev, userId]
+        );
+    };
 
-const Dashboard: React.FC<DashboardProps> = ({ currentUser, users, transactions, onSendMoney, isKing = false, globalTransactions = [], onUpdateUser, onSoftDeleteUser, onRestoreUser }) => {
-  const [receiverId, setReceiverId] = useState('');
-  const [galleons, setGalleons] = useState<string>('');
-  const [sickles, setSickles] = useState<string>('');
-  const [knuts, setKnuts] = useState<string>('');
-  const [error, setError] = useState('');
-  const [success, setSuccess] = useState('');
-  const [activeView, setActiveView] = useState<'user' | 'king' | 'deleted'>('user');
-  const [editingUser, setEditingUser] = useState<User | null>(null);
+    const handleHouseFilterChange = (house: House) => {
+        setSelectedHouses(prev =>
+            prev.includes(house)
+                ? prev.filter(h => h !== house)
+                : [...prev, house]
+        );
+    };
 
-
-  const handleSendMoney = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setError('');
-    setSuccess('');
-
-    if (!receiverId) {
-      setError('Bitte wähle einen Empfänger.');
-      return;
-    }
-
-    const amountInKnuts = currencyToKnuts({
-      galleons: parseInt(galleons) || 0,
-      sickles: parseInt(sickles) || 0,
-      knuts: parseInt(knuts) || 0,
+    const filteredUsers = otherUsers.filter(user => {
+        const nameMatch = user.name.toLowerCase().includes(searchTerm.toLowerCase());
+        const houseMatch = selectedHouses.length === 0 || selectedHouses.includes(user.house);
+        return nameMatch && houseMatch;
     });
 
-    if (amountInKnuts <= 0) {
-      setError('Der Betrag muss größer als Null sein.');
-      return;
-    }
-    if (amountInKnuts > currentUser.balance) {
-      setError('Nicht genügend Guthaben vorhanden.');
-      return;
-    }
+    const handleSend = async () => {
+        setError('');
+        setSuccess('');
+        if (receiverIds.length === 0) {
+            setError('Bitte wähle mindestens einen Empfänger aus.');
+            return;
+        }
+        const amountPerRecipient = currencyToKnuts({
+            galleons: parseInt(galleons) || 0,
+            sickles: parseInt(sickles) || 0,
+            knuts: parseInt(knuts) || 0,
+        });
 
-    try {
-        await onSendMoney(receiverId, amountInKnuts);
-        setSuccess(`${formatCurrency(amountInKnuts)} erfolgreich gesendet!`);
-        setReceiverId('');
-        setGalleons('');
-        setSickles('');
-        setKnuts('');
-        setTimeout(() => setSuccess(''), 4000);
-    } catch(e: any) {
-        setError(e.message || 'Senden fehlgeschlagen.');
-    }
-  };
+        if (amountPerRecipient <= 0) {
+            setError('Bitte gib einen Betrag größer als 0 an.');
+            return;
+        }
 
-  const userTransactions = transactions
-    .filter(t => t.sender_id === currentUser.id || t.receiver_id === currentUser.id)
-    .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+        const totalAmount = amountPerRecipient * receiverIds.length;
+        if (totalAmount > currentUser.balance) {
+            setError(`Du hast nicht genügend Geld. Du benötigst ${formatCurrency(totalAmount)}, hast aber nur ${formatCurrency(currentUser.balance)}.`);
+            return;
+        }
+        try {
+            await onSendMoney(receiverIds, amountPerRecipient, note.trim());
+            const recipientNames = receiverIds.map(id => users.find(u => u.id === id)?.name).filter(Boolean);
+            setSuccess(`Du hast ${formatCurrency(amountPerRecipient)} an ${recipientNames.length > 1 ? `${recipientNames.length} Personen` : recipientNames[0]} gesendet.`);
+            setReceiverIds([]);
+            setGalleons('');
+            setSickles('');
+            setKnuts('');
+            setNote('');
+        } catch (e: any) {
+            setError(e.message);
+        }
+    };
 
-  const activeUsers = users.filter(u => !u.is_deleted);
-  const deletedUsers = users.filter(u => u.is_deleted);
-  const otherUsers = activeUsers.filter(u => u.id !== currentUser.id);
+    const commonInputStyles = "w-full p-4 bg-[#FFFFFF21] border border-[#FFFFFF59] rounded-2xl focus:ring-2 focus:ring-white focus:outline-none transition-shadow";
 
-  const { galleons: balanceG, sickles: balanceS, knuts: balanceK } = knutsToCurrency(currentUser.balance);
-
-  const KingAllUsersView = () => (
-    <div>
-        <h3 className="text-2xl font-bold mb-4 flex items-center gap-3"><UsersIcon /> Alle aktiven Nutzer</h3>
-        <div className="overflow-y-auto max-h-[65vh] pr-2 space-y-2">
-          {activeUsers.map(user => (
-            <button key={user.id} 
-              onClick={() => setEditingUser(user)}
-              className="w-full bg-black/30 p-3 rounded-xl flex justify-between items-center text-left hover:bg-black/50 transition-colors cursor-pointer"
-              aria-label={`Nutzer ${user.name} bearbeiten`}
-            >
-              <div>
-                <p className={`font-semibold ${houseTextColors[user.house]}`}>
-                  <HouseDot house={user.house} />
-                  {user.name} {user.id === currentUser.id && <span className="text-xs opacity-70">(Du)</span>}
-                </p>
-                <p className="text-xs opacity-70 ml-[18px]">{user.house}</p>
-              </div>
-              <p className="font-bold text-lg">{formatCurrency(user.balance)}</p>
-            </button>
-          ))}
-        </div>
-    </div>
-  );
-  
-  const KingDeletedUsersView = () => (
-      <div>
-        <h3 className="text-2xl font-bold mb-4 flex items-center gap-3"><TrashIcon /> Gelöschte Nutzer</h3>
-        {deletedUsers.length > 0 ? (
-            <div className="overflow-y-auto max-h-[65vh] pr-2 space-y-2">
-            {deletedUsers.map(user => (
-                <div key={user.id} className="bg-black/30 p-3 rounded-xl flex justify-between items-center">
-                <div>
-                    <p className={`font-semibold ${houseTextColors[user.house]}`}>
-                    <HouseDot house={user.house} />
-                    {user.name}
-                    </p>
-                    <p className="text-xs opacity-70 ml-[18px]">{user.house}</p>
+    return (
+        <div className="space-y-6">
+            <h2 className="text-3xl sm:text-4xl font-bold">Geld senden</h2>
+            <div className="bg-[#FFFFFF21] rounded-3xl p-6 sm:p-8 border border-[#FFFFFF59]">
+                <div className="space-y-6">
+                    <div>
+                        <label className="block mb-2 text-sm font-medium opacity-80">An</label>
+                        <div className="flex gap-2 mb-2">
+                            <input
+                                type="text"
+                                placeholder="Nutzer suchen..."
+                                value={searchTerm}
+                                onChange={e => setSearchTerm(e.target.value)}
+                                className={`${commonInputStyles} p-3 h-12 flex-grow`}
+                            />
+                            <div className="relative" ref={filterMenuRef}>
+                                <button
+                                    onClick={() => setShowFilterMenu(!showFilterMenu)}
+                                    className={`h-12 w-12 flex-shrink-0 flex items-center justify-center rounded-2xl border transition-colors ${selectedHouses.length > 0 ? 'bg-white/10 border-white' : 'bg-[#FFFFFF21] border-[#FFFFFF59] hover:bg-white/10'}`}
+                                    aria-label="Nach Haus filtern"
+                                >
+                                    <FilterIcon className="w-5 h-5" />
+                                </button>
+                                {showFilterMenu && (
+                                    <div className="absolute right-0 top-full mt-2 w-48 bg-[#2a2a2a] border border-[#FFFFFF59] rounded-2xl p-2 z-10 animate-fadeIn">
+                                        <p className="px-2 py-1 text-xs font-bold uppercase opacity-70">Nach Haus filtern</p>
+                                        {Object.values(House).map(house => (
+                                            <label key={house} className="flex items-center gap-2 p-2 rounded-lg hover:bg-white/10 cursor-pointer">
+                                                <input
+                                                    type="checkbox"
+                                                    checked={selectedHouses.includes(house)}
+                                                    onChange={() => handleHouseFilterChange(house)}
+                                                    className="w-4 h-4 rounded bg-black/30 border-white/50 text-green-500 focus:ring-green-500/50"
+                                                />
+                                                <span className={`font-medium ${houseTextColors[house]}`}>{house}</span>
+                                            </label>
+                                        ))}
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                         <div className="bg-[#FFFFFF21] border border-[#FFFFFF59] rounded-2xl p-2 max-h-48 overflow-y-auto">
+                            {filteredUsers.length > 0 ? (
+                                filteredUsers.map(user => (
+                                    <label key={user.id} className={`flex items-center p-3 rounded-xl cursor-pointer transition-colors ${receiverIds.includes(user.id) ? 'bg-white/10' : 'hover:bg-white/5'}`}>
+                                        <input
+                                            type="checkbox"
+                                            checked={receiverIds.includes(user.id)}
+                                            onChange={() => handleReceiverToggle(user.id)}
+                                            className="w-5 h-5 rounded-md bg-black/30 border-white/50 text-green-500 focus:ring-green-500/50"
+                                        />
+                                        <span className="ml-3 font-medium">{user.name}</span>
+                                        <span className={`ml-auto text-sm font-semibold ${houseTextColors[user.house]}`}>{user.house}</span>
+                                    </label>
+                                ))
+                            ) : (
+                                <p className="p-3 text-center opacity-70">Keine passenden Nutzer gefunden.</p>
+                            )}
+                        </div>
+                    </div>
+                    <div>
+                        <label className="block mb-2 text-sm font-medium opacity-80">Betrag (pro Person)</label>
+                        <div className="grid grid-cols-3 gap-4">
+                             <input type="number" placeholder="Galleonen" value={galleons} onChange={e => setGalleons(e.target.value)} className={commonInputStyles} />
+                            <input type="number" placeholder="Sickel" value={sickles} onChange={e => setSickles(e.target.value)} className={commonInputStyles} />
+                            <input type="number" placeholder="Knut" value={knuts} onChange={e => setKnuts(e.target.value)} className={commonInputStyles} />
+                        </div>
+                    </div>
+                    <div>
+                        <label htmlFor="note" className="block mb-2 text-sm font-medium opacity-80">Notiz (optional)</label>
+                        <input
+                            type="text"
+                            id="note"
+                            value={note}
+                            onChange={e => setNote(e.target.value)}
+                            className={commonInputStyles}
+                            placeholder={notePlaceholder}
+                            maxLength={100}
+                        />
+                    </div>
+                    {error && <p className="text-red-400 text-sm text-center">{error}</p>}
+                    {success && <p className="text-green-400 text-sm text-center">{success}</p>}
+                    <button onClick={handleSend} className="w-full text-black bg-white hover:bg-gray-200 font-bold rounded-full text-base h-[3.75rem] transition-colors">
+                        Senden
+                    </button>
                 </div>
-                <button 
-                    onClick={() => onRestoreUser(user.id)}
-                    className="flex items-center gap-2 bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded-full transition-colors text-sm"
-                >
-                    <RestoreIcon className="w-4 h-4" /> Wiederherstellen
-                </button>
-                </div>
-            ))}
             </div>
-        ) : (
-            <p className="opacity-70 text-center py-8">Keine gelöschten Nutzer.</p>
-        )}
-      </div>
-  );
-
-  const KingGlobalTransactionsView = () => (
-    <div>
-        <h3 className="text-2xl font-bold mb-4 flex items-center gap-3"><HistoryIcon /> Alle Transaktionen</h3>
-        <div className="overflow-y-auto max-h-[65vh] pr-2 space-y-2">
-          {globalTransactions.map(t => (
-            <li key={t.id} className="bg-black/30 p-3 rounded-xl flex justify-between items-center list-none">
-              <div>
-                <p className="font-semibold text-sm">
-                  <span className={`inline-flex items-center ${t.sender?.house && houseTextColors[t.sender.house]}`}>
-                    <HouseDot house={t.sender?.house} />
-                    {t.sender?.name || 'Unbekannt'}
-                  </span>
-                  <span className="opacity-70 mx-1">→</span>
-                  <span className={`inline-flex items-center ${t.receiver?.house && houseTextColors[t.receiver.house]}`}>
-                    <HouseDot house={t.receiver?.house} />
-                    {t.receiver?.name || 'Unbekannt'}
-                  </span>
-                </p>
-                <p className="text-xs opacity-70">{new Date(t.created_at).toLocaleString('de-DE')}</p>
-              </div>
-              <p className="font-bold">{formatCurrency(t.amount)}</p>
-            </li>
-          ))}
         </div>
-    </div>
-  );
+    );
+};
 
-  return (
-    <>
-    {editingUser && <UserEditModal user={editingUser} onClose={() => setEditingUser(null)} onSave={onUpdateUser} onDelete={onSoftDeleteUser} isEditingSelf={editingUser.id === currentUser.id} />}
-    <div className="container mx-auto p-4 pt-24 md:pt-28">
-      {isKing && (
-        <div className="mb-6 flex justify-center">
-          <div className="bg-[#FFFFFF21] p-1.5 rounded-full flex gap-1 sm:gap-2 flex-wrap justify-center">
-            <button onClick={() => setActiveView('user')} className={`px-4 sm:px-6 py-2 rounded-full font-bold transition-colors ${activeView === 'user' ? 'bg-white text-black' : 'hover:bg-white/10'}`}>
-              Mein Konto
-            </button>
-            <button onClick={() => setActiveView('king')} className={`px-4 sm:px-6 py-2 rounded-full font-bold transition-colors flex items-center gap-2 ${activeView === 'king' ? 'bg-white text-black' : 'hover:bg-white/10'}`}>
-              <CrownIcon className="w-5 h-5" />
-              Königliche Übersicht
-            </button>
-             <button onClick={() => setActiveView('deleted')} className={`px-4 sm:px-6 py-2 rounded-full font-bold transition-colors flex items-center gap-2 ${activeView === 'deleted' ? 'bg-white text-black' : 'hover:bg-white/10'}`}>
-              <TrashIcon className="w-5 h-5" />
-              Gelöschte Nutzer
-            </button>
-          </div>
+const HistoryView: React.FC<{ transactions: Transaction[], currentUserId: string }> = ({ transactions, currentUserId }) => {
+    if (transactions.length === 0) {
+        return <div className="text-center opacity-70">Keine Transaktionen gefunden.</div>;
+    }
+    return (
+        <div className="space-y-6">
+            <h2 className="text-3xl sm:text-4xl font-bold">Transaktionsverlauf</h2>
+            <div className="space-y-4">
+                {transactions.map(tx => {
+                    const isAdminChange = tx.note?.startsWith('ADMIN_BALANCE_CHANGE::');
+
+                    if (isAdminChange) {
+                        const parts = tx.note.split('::');
+                        const newBalanceInKnuts = parseInt(parts[2], 10);
+                        const adminName = tx.sender?.name || 'Der King';
+
+                        return (
+                            <div key={tx.id} className="bg-yellow-500/10 rounded-3xl p-4 sm:p-6 border border-yellow-500/50">
+                                <div className="flex justify-between items-center">
+                                    <div>
+                                        <p className="font-bold text-yellow-300">Administrative Änderung</p>
+                                        <p className="text-sm opacity-70">{new Date(tx.created_at).toLocaleString('de-DE')}</p>
+                                    </div>
+                                    <UserEditIcon className="w-6 h-6 text-yellow-300" />
+                                </div>
+                                <p className="text-sm opacity-90 mt-2 pt-2 border-t border-white/10">
+                                    {adminName} hat den Kontostand von dir geändert. Dein neuer Kontostand beträgt jetzt: <strong className="font-bold">{formatCurrency(newBalanceInKnuts)}</strong>.
+                                </p>
+                            </div>
+                        );
+                    }
+                    
+                    const isSent = tx.sender_id === currentUserId;
+                    const otherParty = isSent ? tx.receiver : tx.sender;
+                    const houseColorClass = otherParty ? houseTextColors[otherParty.house] : 'opacity-70';
+
+                    return (
+                        <div key={tx.id} className="bg-[#FFFFFF21] rounded-3xl p-4 sm:p-6 border border-[#FFFFFF59]">
+                            <div className="flex justify-between items-center">
+                                <div>
+                                    <p className="font-bold">
+                                        {isSent ? 'An ' : 'Von '}
+                                        <span className={houseColorClass}>{otherParty?.name || 'Unbekannt'}</span>
+                                    </p>
+                                    <p className="text-sm opacity-70">{new Date(tx.created_at).toLocaleString('de-DE')}</p>
+                                </div>
+                                <p className={`font-bold text-lg ${isSent ? 'text-red-400' : 'text-green-400'}`}>
+                                    {isSent ? '-' : '+'} {formatCurrency(tx.amount)}
+                                </p>
+                            </div>
+                            {tx.note && (
+                                <p className="text-sm opacity-80 mt-2 pt-2 border-t border-white/10">
+                                    {tx.note}
+                                </p>
+                            )}
+                        </div>
+                    );
+                })}
+            </div>
         </div>
-      )}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-        {/* Left Column: Balance and Send Money */}
-        <div className="lg:col-span-1 space-y-8">
-          <div className={containerStyles}>
-            <div className="flex items-center gap-4 mb-4">
-               <div 
-                  className={`w-20 h-20 rounded-full flex items-center justify-center flex-shrink-0 ${houseBgColors[currentUser.house]} border-4 ${houseBorderColors[currentUser.house]}`}
-                  aria-label={`Avatar für ${currentUser.name}`}
-              >
-                  <span className="text-4xl font-bold text-white select-none">{currentUser.name.charAt(0)}</span>
-              </div>
-              <div>
-                <h2 className={`text-3xl sm:text-[2.25rem] font-bold mb-1 leading-tight ${houseTextColors[currentUser.house]}`}>{currentUser.name}</h2>
-                <p className="opacity-80">{currentUser.house}</p>
-              </div>
+    );
+};
+
+const AdminView: React.FC<{
+    users: User[];
+    transactions: Transaction[];
+    onUpdateUser: DashboardProps['onUpdateUser'];
+    onSoftDeleteUser: DashboardProps['onSoftDeleteUser'];
+    onRestoreUser: DashboardProps['onRestoreUser'];
+    currentUser: User;
+    isKing: boolean;
+}> = ({ users, transactions, onUpdateUser, onSoftDeleteUser, onRestoreUser, currentUser, isKing }) => {
+    const [editingUser, setEditingUser] = useState<User | null>(null);
+    const [showDeleted, setShowDeleted] = useState(false);
+
+    const sortedUsers = [...users].sort((a, b) => a.name.localeCompare(b.name));
+    const visibleUsers = showDeleted ? sortedUsers : sortedUsers.filter(u => !u.is_deleted);
+
+    return (
+        <div className="space-y-6">
+            {editingUser && (
+                <UserEditModal
+                    user={editingUser}
+                    onClose={() => setEditingUser(null)}
+                    onSave={onUpdateUser}
+                    onDelete={onSoftDeleteUser}
+                    isEditingSelf={editingUser.id === currentUser.id}
+                    isKing={isKing}
+                />
+            )}
+            <h2 className="text-3xl sm:text-4xl font-bold">Admin Panel</h2>
+            <div className="bg-[#FFFFFF21] rounded-3xl p-6 sm:p-8 border border-[#FFFFFF59]">
+                 <div className="flex justify-between items-center mb-4">
+                    <h3 className="text-2xl font-bold">Nutzer verwalten</h3>
+                    <label className="flex items-center cursor-pointer">
+                        <span className="mr-2 text-sm">Gelöschte anzeigen</span>
+                        <div className="relative">
+                            <input type="checkbox" checked={showDeleted} onChange={() => setShowDeleted(!showDeleted)} className="sr-only" />
+                            <div className={`block w-10 h-6 rounded-full ${showDeleted ? 'bg-white' : 'bg-black/30'}`}></div>
+                            <div className={`dot absolute left-1 top-1 bg-black/50 w-4 h-4 rounded-full transition-transform ${showDeleted ? 'transform translate-x-full bg-green-500' : ''}`}></div>
+                        </div>
+                    </label>
+                </div>
+                <div className="space-y-3">
+                    {visibleUsers.map(user => (
+                        <div key={user.id} className={`flex items-center justify-between p-3 rounded-2xl ${user.is_deleted ? 'bg-red-500/10' : 'bg-black/20'}`}>
+                            <div>
+                                <p className="font-semibold">{user.name} {user.id === currentUser.id && '(Du)'}</p>
+                                <p className="text-sm opacity-70">
+                                    {formatCurrency(user.balance)} - <span className={`font-semibold ${houseTextColors[user.house]}`}>{user.house}</span>
+                                </p>
+                            </div>
+                            <div className="flex gap-2">
+                               {user.is_deleted ? (
+                                    <button onClick={() => onRestoreUser(user.id)} className="p-2 hover:bg-white/20 rounded-full transition-colors" aria-label="Nutzer wiederherstellen">
+                                        <RestoreIcon />
+                                    </button>
+                               ) : (
+                                <>
+                                    <button onClick={() => setEditingUser(user)} className="p-2 hover:bg-white/20 rounded-full transition-colors" aria-label="Nutzer bearbeiten">
+                                        <UserEditIcon className="w-5 h-5" />
+                                    </button>
+                                     {user.id !== currentUser.id && (
+                                        <button onClick={() => onSoftDeleteUser(user.id)} className="p-2 hover:bg-white/20 rounded-full transition-colors" aria-label="Nutzer löschen">
+                                            <TrashIcon className="w-5 h-5" />
+                                        </button>
+                                     )}
+                                </>
+                               )}
+                            </div>
+                        </div>
+                    ))}
+                </div>
             </div>
             
-            <div className="text-center bg-black/30 p-6 rounded-2xl">
-                <p className="opacity-80 text-sm">Aktueller Kontostand</p>
-                <p className="text-4xl sm:text-5xl font-black text-white tracking-wider">
-                    {balanceG.toLocaleString()} <span className="text-2xl sm:text-3xl opacity-80 font-semibold">G</span>
-                </p>
-                <div className="flex justify-center gap-6 mt-2">
-                    <p className="text-xl sm:text-2xl font-bold text-white/80 tracking-wider">
-                        {balanceS} <span className="text-lg sm:text-xl opacity-80 font-semibold">S</span>
-                    </p>
-                    <p className="text-xl sm:text-2xl font-bold text-white/80 tracking-wider">
-                        {balanceK} <span className="text-lg sm:text-xl opacity-80 font-semibold">K</span>
-                    </p>
+             <div className="bg-[#FFFFFF21] rounded-3xl p-6 sm:p-8 border border-[#FFFFFF59]">
+                <h3 className="text-2xl font-bold mb-4">Alle Transaktionen</h3>
+                <div className="space-y-3 max-h-96 overflow-y-auto pr-2">
+                    {transactions.length > 0 ? transactions.map(tx => {
+                        const isAdminChange = tx.note?.startsWith('ADMIN_BALANCE_CHANGE::');
+
+                        if (isAdminChange) {
+                            const parts = tx.note.split('::');
+                            const newBalanceInKnuts = parseInt(parts[2], 10);
+                            const adminName = tx.sender?.name || 'Unbekannt';
+                            const targetUserName = tx.receiver?.name || 'Unbekannt';
+
+                            return (
+                                <div key={tx.id} className="bg-yellow-500/10 p-3 rounded-xl text-sm border border-yellow-500/20">
+                                    <p>
+                                        <strong className={tx.sender ? houseTextColors[tx.sender.house] : ''}>{adminName}</strong>
+                                        {' hat den Kontostand von '}
+                                        <strong className={tx.receiver ? houseTextColors[tx.receiver.house] : ''}>{targetUserName}</strong>
+                                        {' geändert: '}
+                                        <strong className="font-bold">{formatCurrency(newBalanceInKnuts)}</strong>.
+                                    </p>
+                                    <p className="opacity-60 text-xs mt-1">{new Date(tx.created_at).toLocaleString()}</p>
+                                </div>
+                            );
+                        }
+                        
+                        return (
+                            <div key={tx.id} className="bg-black/20 p-3 rounded-xl text-sm">
+                                <p>
+                                    <strong className={tx.sender ? houseTextColors[tx.sender.house] : ''}>{tx.sender?.name || 'Unbekannt'}</strong>
+                                    {' -> '}
+                                    <strong className={tx.receiver ? houseTextColors[tx.receiver.house] : ''}>{tx.receiver?.name || 'Unbekannt'}</strong>
+                                    : {formatCurrency(tx.amount)}
+                                </p>
+                                <p className="opacity-60 text-xs mt-1">{new Date(tx.created_at).toLocaleString()}</p>
+                                {tx.note && (
+                                    <p className="text-sm opacity-80 mt-1 pt-1 border-t border-white/10">
+                                        {tx.note}
+                                    </p>
+                                )}
+                            </div>
+                        );
+                    }) : <p className="opacity-70">Keine Transaktionen.</p>}
                 </div>
             </div>
-          </div>
+        </div>
+    );
+};
 
-          <div className={containerStyles}>
-            <h2 className="text-3xl sm:text-[2.25rem] font-bold mb-4 flex items-center gap-3 leading-tight"><SendIcon /> Galleonen Senden</h2>
-            <form onSubmit={handleSendMoney} className="space-y-4">
-              <div>
-                <label htmlFor="receiver" className="block text-sm font-medium opacity-80 mb-1">Empfänger</label>
-                <select id="receiver" value={receiverId} onChange={(e) => setReceiverId(e.target.value)} className={commonInputStyles} required>
-                  <option value="" disabled>Wähle einen Empfänger</option>
-                  {otherUsers.map(user => (
-                    <option key={user.id} value={user.id}>{user.name} ({user.house})</option>
-                  ))}
-                </select>
-              </div>
-              <div>
-                <label className="block text-sm font-medium opacity-80 mb-1">Betrag</label>
-                <div className="grid grid-cols-3 gap-2">
-                    <input type="number" value={galleons} onChange={e => setGalleons(e.target.value)} min="0" placeholder="Galleonen" className={`${commonInputStyles} text-center`} />
-                    <input type="number" value={sickles} onChange={e => setSickles(e.target.value)} min="0" max="16" placeholder="Sickel" className={`${commonInputStyles} text-center`} />
-                    <input type="number" value={knuts} onChange={e => setKnuts(e.target.value)} min="0" max="28" placeholder="Knuts" className={`${commonInputStyles} text-center`} />
-                </div>
-              </div>
-              {error && <p className="text-red-400 text-sm">{error}</p>}
-              {success && <p className="text-green-400 text-sm">{success}</p>}
-              <button type="submit" className="w-full flex justify-center items-center gap-2 bg-white text-black font-bold py-2 px-4 rounded-full hover:bg-gray-200 transition-colors h-[3.75rem] text-base">
-                Senden
-              </button>
-            </form>
-          </div>
+
+const NavButton: React.FC<{
+  label: string;
+  icon: React.ReactNode;
+  isActive: boolean;
+  onClick: () => void;
+}> = ({ label, icon, isActive, onClick }) => (
+  <button
+    onClick={onClick}
+    className={`flex flex-col items-center justify-center w-24 h-16 rounded-2xl transition-all duration-300 ${
+      isActive ? 'bg-white/10' : 'hover:bg-white/5'
+    }`}
+    aria-selected={isActive}
+  >
+    <div className={`transition-transform duration-300 ${isActive ? 'transform -translate-y-1' : ''}`}>
+        {icon}
+    </div>
+    <span className={`text-xs mt-1 ${isActive ? 'font-bold' : ''}`}>
+      {label}
+    </span>
+  </button>
+);
+
+const Dashboard: React.FC<DashboardProps> = ({
+  currentUser,
+  users,
+  transactions,
+  onSendMoney,
+  isKing,
+  globalTransactions,
+  onUpdateUser,
+  onSoftDeleteUser,
+  onRestoreUser
+}) => {
+  const [currentView, setCurrentView] = useState<'send' | 'history' | 'admin'>('send');
+
+  const balance = knutsToCurrency(currentUser.balance);
+
+  return (
+    <div className="pt-28 pb-28 md:pt-32 md:pb-32 animate-fadeIn">
+      <div className="container mx-auto px-4">
+        <div className="text-center mb-8">
+            <p className="text-xl opacity-80">Dein Kontostand</p>
+            <p className="text-4xl sm:text-5xl font-bold tracking-tighter">
+                {balance.galleons} <span className="text-3xl opacity-70">G</span>, {balance.sickles} <span className="text-3xl opacity-70">S</span>, {balance.knuts} <span className="text-3xl opacity-70">K</span>
+            </p>
         </div>
 
-        {/* Right Column: Transaction History / King Views */}
-        <div className={`lg:col-span-2 ${containerStyles} min-h-[50vh]`}>
-          {isKing && activeView === 'king' ? (
-            <div className="space-y-8">
-                <KingAllUsersView />
-                <KingGlobalTransactionsView />
-            </div>
-          ) : isKing && activeView === 'deleted' ? (
-            <KingDeletedUsersView />
-          ) : (
-            <>
-              <h2 className="text-3xl sm:text-[2.25rem] font-bold mb-4 flex items-center gap-3 leading-tight"><HistoryIcon /> Transaktionen</h2>
-              <div className="overflow-y-auto max-h-[50vh] lg:max-h-[65vh] pr-2">
-                {userTransactions.length > 0 ? (
-                  <ul className="space-y-3">
-                    {userTransactions.map(t => {
-                      const isSender = t.sender_id === currentUser.id;
-                      const otherUser = isSender ? t.receiver : t.sender;
-                      return (
-                        <li key={t.id} className="bg-black/30 p-4 rounded-2xl flex justify-between items-center">
-                          <div>
-                            <p className="font-semibold">
-                              {isSender ? 'An ' : 'Von '}
-                              <span className={`inline-flex items-center ${otherUser?.house && houseTextColors[otherUser.house]}`}>
-                                <HouseDot house={otherUser?.house} />
-                                {otherUser?.name || 'Unbekannt'}
-                              </span>
-                            </p>
-                            <p className="text-xs opacity-70">{new Date(t.created_at).toLocaleString('de-DE')}</p>
-                          </div>
-                          <p className={`font-bold text-lg ${isSender ? 'text-red-400' : 'text-green-400'}`}>
-                            {isSender ? '-' : '+'} {formatCurrency(t.amount)}
-                          </p>
-                        </li>
-                      );
-                    })}
-                  </ul>
-                ) : (
-                  <p className="opacity-70 text-center py-8">Keine Transaktionen vorhanden.</p>
-                )}
-              </div>
-            </>
-          )}
+        <div className="max-w-2xl mx-auto">
+            {currentView === 'send' && (
+                <SendMoneyView
+                    currentUser={currentUser}
+                    users={users}
+                    onSendMoney={onSendMoney}
+                />
+            )}
+            {currentView === 'history' && <HistoryView transactions={transactions} currentUserId={currentUser.id} />}
+            {currentView === 'admin' && isKing && globalTransactions && (
+                <AdminView
+                    users={users}
+                    transactions={globalTransactions}
+                    onUpdateUser={onUpdateUser}
+                    onSoftDeleteUser={onSoftDeleteUser}
+                    onRestoreUser={onRestoreUser}
+                    currentUser={currentUser}
+                    isKing={isKing}
+                />
+            )}
         </div>
       </div>
+
+      <nav className="fixed bottom-0 left-0 right-0 bg-[#1e1e1e] border-t border-[#FFFFFF59] p-2">
+        <div className="container mx-auto flex justify-around">
+          <NavButton
+            label="Senden"
+            icon={<SendIcon />}
+            isActive={currentView === 'send'}
+            onClick={() => setCurrentView('send')}
+          />
+          <NavButton
+            label="Verlauf"
+            icon={<HistoryIcon />}
+            isActive={currentView === 'history'}
+            onClick={() => setCurrentView('history')}
+          />
+          {isKing && (
+            <NavButton
+              label="Admin"
+              icon={<CrownIcon />}
+              isActive={currentView === 'admin'}
+              onClick={() => setCurrentView('admin')}
+            />
+          )}
+        </div>
+      </nav>
     </div>
-    </>
   );
 };
 
