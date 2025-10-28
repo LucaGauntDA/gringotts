@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
-import type { User, Transaction, Currency } from '../types';
+import type { User, Transaction, Currency, MoneyRequest } from '../types';
 import { House } from '../types';
-import { SendIcon, HistoryIcon, CrownIcon, UsersIcon, TrashIcon, RestoreIcon, UserEditIcon, UserIcon, FilterIcon } from './icons';
+import { SendIcon, HistoryIcon, CrownIcon, UsersIcon, TrashIcon, RestoreIcon, UserEditIcon, UserIcon, FilterIcon, RequestIcon, CheckIcon, XIcon } from './icons';
 import { currencyToKnuts, knutsToCanonical } from '../utils';
 
 const houseTextColors: { [key: string]: string } = {
@@ -15,12 +15,16 @@ interface DashboardProps {
   currentUser: User;
   users: User[];
   transactions: Transaction[];
+  moneyRequests: MoneyRequest[];
   onSendMoney: (receiverIds: string[], amount: { g: number; s: number; k: number }, note?: string) => Promise<void>;
   isKing?: boolean;
   globalTransactions?: Transaction[];
   onUpdateUser: (userId: string, updates: { name: string; house: House; balance: number }) => Promise<void>;
   onSoftDeleteUser: (userId: string) => Promise<void>;
   onRestoreUser: (userId: string) => Promise<void>;
+  onCreateRequest: (requesteeIds: string[], amount: { g: number; s: number; k: number }, note?: string) => Promise<void>;
+  onAcceptRequest: (request: MoneyRequest) => Promise<void>;
+  onRejectRequest: (requestId: string) => Promise<void>;
 }
 
 const UserEditModal: React.FC<{
@@ -396,7 +400,7 @@ const notePlaceholders = [
     "Ein Set selbst-schließender Reißverschlüsse",
     "Eine verzauberte Geldbörse, die nie leer wird (Wunschdenken)",
     "Ein magischer Pass, der alle Grenzen öffnet",
-    "Ein Set selbst-erneuernder Flugtickets",
+    "Ein Set selbst-erneuerender Flugtickets",
     "Eine verzauberte Sonnenbrille, die die Welt bunter macht",
     "Ein magischer Hut, der vor Sonne und Regen schützt",
     "Ein Set selbst-kühlender Kleidung für heiße Tage",
@@ -500,6 +504,275 @@ const notePlaceholders = [
     "Ein magischer Rasenmäher, der von alleine mäht",
     "Ein Set selbst-wässernder Blumen",
     "Eine verzauberte Heckenschere, die perfekt schneidet",
+    "Beitrag für die 'Wer kann am längsten als Teekanne sitzen bleiben'-Wette",
+    "Anzahlung für einen unsichtbaren Goldfisch",
+    "Gebühr für professionelles Spuken (Stufe 3 Geist)",
+    "Rückerstattung für den Schrumpftrank, der meine Katze riesig gemacht hat",
+    "Dein Anteil am 'Wir tun so, als wären wir Statuen im Park'-Geschäft",
+    "Geld für das Patent eines selbstrührenden Kessels, der Witze erzählt",
+    "Bestechungsgeld für den Hauself, damit er nicht verrät, wer die Kekse gegessen hat",
+    "Miete für das Baumhaus (inklusive Eichhörnchen-Concierge)",
+    "Eine Runde 'Find den Niffler' im Gemeinschaftsraum",
+    "Lizenzgebühr für die Nutzung meines patentierten Fluchworts",
+    "Kosten für die psychologische Betreuung meines verfluchten Gartenzwergs",
+    "Sponsoring für das professionelle Gobstone-Team 'Die rollenden Steine'",
+    "Abo für 'Zauberer-Woche', die Klatsch- und Tratschzeitschrift",
+    "Rückzahlung für das Buch 'Wie man Freunde gewinnt und Leute verhext'",
+    "Ein Pfund Drachenschuppenpolitur",
+    "Beitrag zum Kauf eines gebrauchten fliegenden Teppichs (hat ein paar Löcher)",
+    "Kursgebühr für 'Verteidigung gegen dunkle Künste... und nervige Nachbarn'",
+    "Ein Dutzend selbstschreibender Federn, die nur Komplimente schreiben",
+    "Reparatur des Zeitumkehrers, der in der Waschmaschine war",
+    "Ein Fass Met für die nächste Hauselfen-Gewerkschaftssitzung",
+    "Bußgeld für illegales Apparieren in einer Muggel-Telefonzelle",
+    "Ein Set magischer Socken, die immer paarweise bleiben",
+    "Kosten für die Entfluchung meines Toasters (er spuckt jetzt nur noch Waffeln)",
+    "Ein Ticket für das Konzert der 'Schwestern des Schicksals' (Backstage-Pässe!)",
+    "Anzahlung für eine maßgeschneiderte Heulende Hütte (weniger Heulen, mehr WLAN)",
+    "Ein Glas eingelegte Schrumpfköpfe (rein dekorativ, versprochen)",
+    "Futter für meinen Hippogreif (er mag nur Sushi)",
+    "Ein Set 'Erweiterbare Ohren', um die Nachbarn zu belauschen",
+    "Rückzahlung für die Wette, dass Lockhart einen ganzen Satz ohne 'Ich' sagen kann",
+    "Ein magisches Erste-Hilfe-Set für explodierende Snap-Unfälle",
+    "Gebühr für die Mitgliedschaft im 'Club der anonymen Werwölfe'",
+    "Ein Päckchen 'Nasch-und-Schwänz-Leckereien' für den nächsten Montag",
+    "Versicherung für meinen Besen (gegen Drachen und Blitze)",
+    "Ein verzauberter Kompass, der immer zum nächsten Pub zeigt",
+    "Geld für einen Sprachkurs in Mermish (Wassersprachen)",
+    "Ein verfluchtes Schachspiel, bei dem die Figuren beleidigend werden",
+    "Kosten für die Beseitigung eines portablen Sumpfes aus meinem Schlafzimmer",
+    "Ein Set selbst-nachfüllender Tintenfässer (Geschmacksrichtung: Himbeere)",
+    "Bestellung bei 'Weasleys Zauberhafte Zauberscherze' - die große Box",
+    "Ein persönlicher Wetterzauber (Sonnenschein über meinem Schreibtisch)",
+    "Anzahlung für einen Phönix (Warteliste: 300 Jahre)",
+    "Ein Kurs in 'Kreatives Fluchen für Anfänger'",
+    "Ein Dutzend Schokofrösche (nur die seltenen Karten, bitte)",
+    "Bußgeld für das Parken meines Besens im Halteverbot",
+    "Ein selbst-bügelndes Hemd für das nächste Ministeriums-Meeting",
+    "Rückerstattung für den Liebestrank, der auf die Katze gewirkt hat",
+    "Ein Set magischer Würfel, die immer eine 6 würfeln (nicht schummeln!)",
+    "Ein Glas Einhornschweiß (für glänzendes Haar, sagt man)",
+    "Beitrag für die 'Rettet die Hauselfen'-Stiftung (S.P.E.W.)",
+    "Ein verzaubertes Notizbuch, das meine Gedanken stiehlt und Bestseller schreibt",
+    "Gebühr für die Reinigung meines Umhangs nach einem Tintenfisch-Angriff im See",
+    "Miete für den Besenschrank unter der Treppe",
+    "Kosten für die Entlausung meines Basilisken",
+    "Ein Abo für 'Der Tagesprophet', aber nur die Comics",
+    "Rückzahlung für die Wette, dass ich einen ganzen Kürbissaft-Krug exen kann",
+    "Ein neues Gehirn für den Irrwicht im Schrank",
+    "Beitrag zur Party-Kasse des Gemeinschaftsraums",
+    "Ein Päckchen Bertie Botts Bohnen (bitte keine Ohrenschmalz-Geschmack)",
+    "Geld für die Reparatur des kaputten Verschwindekabinetts",
+    "Ein Ticket für den Fahrenden Ritter (inklusive Reisekrankheits-Trank)",
+    "Bestechung für den Ghul auf dem Dachboden, damit er leiser ist",
+    "Ein neuer Satz Gobstones (die alten spucken nicht mehr)",
+    "Kursgebühr für 'Wie man einen Drachen erzieht (oder es zumindest überlebt)'",
+    "Ein magischer Türsteher für mein Zimmer (Passwort: 'Fidelius')",
+    "Futter für meine fleischfressende Pflanze (sie mag Steak)",
+    "Ein Set selbst-schreibender Notizen, die sich an alles erinnern",
+    "Bußgeld für das Züchten von Tentacula ohne Lizenz",
+    "Ein verzauberter Wecker, der einen mit Komplimenten weckt",
+    "Ein Glas Drachen-Chili-Soße (extra scharf)",
+    "Rückzahlung für den Scherz mit dem Stinksaft in der Großen Halle",
+    "Ein magischer Stift, der Hausaufgaben in perfekter Handschrift schreibt",
+    "Gebühr für die Mitgliedschaft im Duellierclub (inkl. Pflaster)",
+    "Ein Päckchen Zischende Wissbies, um Snape abzulenken",
+    "Versicherung gegen Irrwichte, Poltergeister und Peeves",
+    "Ein verzauberter Regenschirm, der einen vor Regen und Flüchen schützt",
+    "Geld für einen Ausflug nach Hogsmeade (mit extra Butterbier)",
+    "Ein verfluchtes Buch, das zurückbeißt (schon wieder)",
+    "Kosten für die Beseitigung von Feen aus meinem Garten",
+    "Ein Set unsichtbarer Tinte (und der Enthüllungszauber)",
+    "Bestellung bei 'Flourish & Blotts' - die schwere Abteilung",
+    "Ein persönlicher Hauself für einen Tag (er putzt auch hinter den Ohren)",
+    "Anzahlung für eine Harpyie (als Wachvogel)",
+    "Ein Kurs in 'Magische Selbstverteidigung gegen aufdringliche Verkäufer'",
+    "Ein Dutzend singender Valentinskarten für Filch",
+    "Bußgeld für das Verwandeln meines Mitschülers in einen Frettchen",
+    "Ein selbst-faltender Papierflieger, der Nachrichten überbringt",
+    "Rückerstattung für den 'Glückstrank', der nur Pech gebracht hat",
+    "Ein Set magischer Murmeln, die den Weg nach Hause finden",
+    "Ein Glas Basiliskengift (für die Unkrautvernichtung)",
+    "Beitrag für die 'Rettet die bedrohten magischen Geschöpfe'-Stiftung",
+    "Ein verzaubertes Kissen, das einem süße Träume garantiert",
+    "Gebühr für die Reinigung des Gemeinschaftsraum-Kamins (zu viel Flohpulver)",
+    "Dein Anteil an der 'Kauf Dumbledore einen neuen Hut'-Sammlung",
+    "Für die gestrige Runde 'Exploding Snap'",
+    "Ein Pfund Drachenleber für den Zaubertrankunterricht",
+    "Der Versuch, die Hauspunkte zurückzukaufen",
+    "Bestechung der fetten Dame, damit sie uns nach der Sperrstunde reinlässt",
+    "Wetteinsatz: Hufflepuff gewinnt den Hauspokal (man darf ja träumen)",
+    "Neue Saiten für die Harfe im Mädchenschlafsaal",
+    "Rückerstattung für den misslungenen Verwandlungszauber",
+    "Ein Set Würg Riegel für die nächste langweilige Unterrichtsstunde",
+    "Notfall-Schokofrosch-Lieferung für die Bibliothek",
+    "Finanzierung unseres geheimen 'Mitternachts-Snack'-Clubs",
+    "Eine Flasche Schrumpflösung, nur für den Fall",
+    "Kaution, um Peeves aus der Ritterrüstung zu befreien",
+    "Dein Beitrag für das nächste große Feuerwerk von den Weasley-Zwillingen",
+    "Ein neues Exemplar von 'Monsterbuch der Monster', das alte hat meinen Finger gegessen",
+    "Geld für die Reinigung der Eulerei (schon wieder)",
+    "Ein Päckchen Gummischnecken, um Malfoy abzulenken",
+    "Nachhilfe in Wahrsagen (bitte keine Todesomen mehr)",
+    "Ein selbst-korrigierender Aufsatz für Professor Binns",
+    "Die Gebühr für die Apparier-Prüfung (diesmal bestehe ich!)",
+    "Eine Runde Butterbier für das gesamte Quidditch-Team",
+    "Ein neuer Satz Phiolen, weil Snape meine zerbrochen hat",
+    "Ein verzauberter Kompass, der zur Küche von Hogwarts führt",
+    "Ein Päckchen 'Fever Fudge', um dem Unterricht zu entgehen",
+    "Ein Ticket für den Hogwarts-Express (Sitzplatz am Fenster)",
+    "Beitrag für die Dekoration der Großen Halle zu Halloween",
+    "Ein neues Set Zauberer-Schachfiguren (die alten sind zu streitlustig)",
+    "Ein seltener Alraunen-Setzling für Professor Sprout",
+    "Die Reparatur des Besens nach dem Zusammenstoß mit der Peitschenden Weide",
+    "Ein Abo für den 'Klitterer', um auf dem Laufenden zu bleiben",
+    "Bestechung für einen Hauself für das Passwort zur Küche",
+    "Ein neuer Satz Quidditch-Bälle (die Klatscher sind entkommen)",
+    "Ein Exemplar von 'Hogwarts, eine Geschichte' (als Einschlafhilfe)",
+    "Eine Spende an den Orden des Phönix (pssst!)",
+    "Ein neues Paar Drachenleder-Handschuhe für den Kräuterkundeunterricht",
+    "Die Kosten für die Entfernung eines Flederwicht-Fluchs",
+    "Ein Geschenk für Hagrids neuesten 'harmlosen' Tierfreund",
+    "Ein Päckchen Lakritz-Zauberstäbe als Nervennahrung",
+    "Der Wetteinsatz, dass Gryffindor das nächste Spiel gewinnt",
+    "Ein neuer Umhang (der alte hat einen Trankfleck)",
+    "Ein Beitrag für die nächste Sitzung von Dumbledores Armee",
+    "Eine Flasche Tinte und eine Rolle Pergament",
+    "Ein neues Vorhängeschloss für mein Tagebuch (gegen neugierige Geschwister)",
+    "Die Kaution für die Weasley-Zwillinge",
+    "Ein Set selbst-schreibender Federn für die ZAG-Vorbereitung",
+    "Eine Kiste Kürbispasteten für die ganze Abteilung",
+    "Ein Beruhigungstrank für die nächste Begegnung mit dem Minister",
+    "Die Reparatur des kaputten Interministeriellen Memos",
+    "Ein neues Set Roben für die nächste Gerichtsverhandlung im Zaubergamot",
+    "Bestechung für einen besseren Schreibtisch in der Mysteriumsabteilung",
+    "Ein Beitrag zur Kaffeekasse der Aurorenzentrale",
+    "Ein Päckchen 'U-No-Poo' für Dolores Umbridge",
+    "Die Gebühr für die Reinigung der Abteilung für magische Unfälle und Katastrophen",
+    "Ein neues Gehirn für die Gehirne in der Halle der Prophezeiungen",
+    "Ein Ticket für die nächste Sitzung des Zaubergamots (mit Popcorn)",
+    "Ein neues Namensschild für meine Bürotür (diesmal richtig geschrieben)",
+    "Ein verzauberter Aktenordner, der sich selbst sortiert",
+    "Die Kosten für die Beseitigung eines misslungenen Experiments aus dem Ministerium",
+    "Ein Exemplar von 'Die Rechte der magischen Geschöpfe' für die Abteilung zur Führung und Aufsicht Magischer Geschöpfe",
+    "Ein neuer Satz Gesetze und Verordnungen (die alten sind verhext)",
+    "Ein Beitrag zur 'Wir-ignorieren-den-Minister'-Stiftung",
+    "Ein neuer Zeitumkehrer für die Abteilung für Zeitreisen",
+    "Ein verzauberter Stift, der Formulare automatisch ausfüllt",
+    "Die Reparatur des Lifts im Ministerium (er steckt schon wieder fest)",
+    "Ein neues Porträt für das Büro des Ministers (dieses lächelt wenigstens)",
+    "Bestechung für eine schnellere Bearbeitung meines Antrags",
+    "Ein Päckchen 'Peruanisches Instant-Finsternispulver' für die nächste Besprechung",
+    "Ein neuer Satz Prophezeiungen (die alten waren zu deprimierend)",
+    "Die Gebühr für die Nutzung des Flohnetzwerks im Ministerium",
+    "Ein neuer Schreibtischstuhl, der nicht quietscht",
+    "Ein Exemplar von 'Bürokratie für Dummies'",
+    "Ein Beitrag zur jährlichen Ministeriums-Weihnachtsfeier",
+    "Ein neuer Satz Stempel für die Abteilung für magische Strafverfolgung",
+    "Ein verzauberter Kaffeebecher, der nie kalt wird",
+    "Die Kosten für die Entfernung eines Poltergeistes aus dem Archiv",
+    "Ein neues Gesetzbuch (das alte wurde als Türstopper verwendet)",
+    "Ein Beitrag zur 'Macht-Arthur-Weasley-glücklich'-Stiftung",
+    "Ein neuer Satz Roben für die nächste internationale Konferenz der Zauberer",
+    "Ein verzauberter Papierkorb, der Dokumente sicher vernichtet",
+    "Die Reparatur des Springbrunnens im Atrium des Ministeriums",
+    "Ein neues Porträt von Cornelius Fudge (zum Draufwerfen)",
+    "Bestechung für einen Parkplatz für meinen Besen näher am Eingang",
+    "Ein Päckchen 'Kanarienvogel-Kekse' für die Kaffeepause",
+    "Ein neuer Satz Aktenvernichter (die alten sind verflucht)",
+    "Die Gebühr für die Kalibrierung meines Zauberstabs",
+    "Ein neues Exemplar von 'Magische Hieroglyphen und Logogramme'",
+    "Ein Beitrag zur 'Wir-brauchen-mehr-Fenster-im-Ministerium'-Initiative",
+    "Schweigegeld (du weißt wofür)",
+    "Therapiestunde für meine Eule, sie hat eine Existenzkrise",
+    "Rückerstattung für den Unsichtbarkeitsumhang, der durchsichtig war",
+    "Abonnement für 'Magische Pilze des Monats'-Club",
+    "Wöchentliche Lieferung von Drachenatem-Minzbonbons",
+    "Investition in ein Startup, das selbstrührende Teetassen herstellt",
+    "Bußgeld für das Verzaubern von Muggel-Geld",
+    "Anteil an der Schatzsuche in den Verbotenen Wäldern",
+    "Kurs 'Wie man mit einem Geist Smalltalk führt'",
+    "Schutzgeld für die Kobolde",
+    "Ein Pfund gemahlener Einhorn-Hörner (ethisch bezogen, natürlich)",
+    "Spende für die 'Anonyme Zaubertrank-Süchtigen'-Hotline",
+    "Anzahlung für ein maßgeschneidertes Porträt, das Witze erzählt",
+    "Reparatur meines fliegenden Staubsaugers",
+    "Gebühr für die Mitgliedschaft im 'Club der exzentrischen Hutträger'",
+    "Rückerstattung für das 'Buch der Ruhe', das geschrien hat",
+    "Ein Fass Oger-Starkbier",
+    "Investition in eine Wurmschwanz-Farm",
+    "Dein Anteil an der Wette, wer Professor Binns zum Einschlafen bringt",
+    "Ein selbstschreibender Einkaufszettel",
+    "Bußgeld für das illegale Züchten von Knallrümpfigen Krötern",
+    "Ein verzaubertes Monokel, das die Auren der Menschen anzeigt",
+    "Kosten für die professionelle Reinigung meines Denkariums",
+    "Ein Set 'Sprechender Socken', die Modetipps geben",
+    "Ein Ticket für das jährliche Troll-Ballett",
+    "Rückzahlung für den 'Ewigen Kaugummi', der nach drei Minuten den Geschmack verlor",
+    "Anzahlung für eine Villa in Little Hangleton (renovierungsbedürftig)",
+    "Ein Glas getrockneter Billywig-Stacheln",
+    "Dein Gewinn aus dem Zauberer-Bingo letzte Woche",
+    "Ein Kurs in 'Die Kunst des dramatischen Auftritts mit Umhang'",
+    "Ein Set selbst-nachfüllender Gewürzdosen",
+    "Versicherung gegen spontane Verwandlungen",
+    "Ein verzaubertes Jo-Jo, das zurückbellt",
+    "Gebühr für die Eichung meines moralischen Kompasses",
+    "Rückerstattung für die 'Wahrheitsbonbons', die nur Lügen erzählten",
+    "Ein Dutzend Flaschen 'Gedächtnis-Lösch-Trank' (für Notfälle)",
+    "Investition in eine Kette von mobilen Zaubertrank-Bars",
+    "Dein Anteil am Verkauf von 'Gilderoy Lockhart'-Actionfiguren",
+    "Ein selbst-malendes Malbuch",
+    "Bußgeld für das Verhexen von Parkuhren",
+    "Ein verzauberter Brieföffner, der singt, wenn Post kommt",
+    "Kosten für die Beseitigung eines Basilisken aus der Kanalisation",
+    "Ein Set 'Leuchtender Pilze' für den Garten",
+    "Ein Ticket für die 'Magische Weltausstellung'",
+    "Rückzahlung für den 'Stimmungsring', der immer nur 'mürrisch' anzeigte",
+    "Anzahlung für einen Thestral (du musst ihn nicht sehen können, um zu bezahlen)",
+    "Ein Glas Feen-Staub (extra glitzernd)",
+    "Dein Gewinn aus der Wette, dass es heute regnet",
+    "Ein Kurs in 'Fortgeschrittenes Schweben für Faule'",
+    "Ein selbst-deckender Tisch",
+    "Versicherung gegen Flüche von Ex-Partnern",
+    "Ein verzauberter Blumentopf, der seine Pflanzen selbst aussucht",
+    "Gebühr für die jährliche Überprüfung meines Fluchs",
+    "Rückerstattung für die 'magischen Bohnen', die nur normale Bohnen waren",
+    "Ein Dutzend Flaschen 'Elixier des langen Lebens' (oder auch nur Limonade)",
+    "Investition in eine Firma, die selbst-gehende Koffer herstellt",
+    "Dein Anteil an der 'Verkaufe-Lockhart-Haarsträhnen'-Aktion",
+    "Ein selbst-faltendes Zelt für Camping-Abenteuer",
+    "Bußgeld für das Verzaubern der Nachbarskatze",
+    "Ein verzauberter Kühlschrank, der Rezepte vorschlägt",
+    "Kosten für die Exmatrikulation meines Ghuls aus der Abendschule",
+    "Ein Set 'sprechender Tierfiguren', die nur die Wahrheit sagen",
+    "Ein Ticket für das 'Internationale Symposium für nutzlose Zauber'",
+    "Rückzahlung für den 'Gedankenlese-Hut', der nur Kopfschmerzen verursachte",
+    "Anzahlung für eine gebrauchte Kristallkugel (mit leichten Kratzern)",
+    "Ein Glas Drachen-Tränen (sehr salzig)",
+    "Dein Gewinn aus der Wette, wie viele Treppenstufen Hogwarts hat",
+    "Ein Kurs in 'Wie man einen Hauself höflich entlässt'",
+    "Ein selbst-reinigendes Aquarium",
+    "Versicherung gegen den Zorn der Zentauren",
+    "Ein verzauberter Besen, der auch Staub wischt",
+    "Gebühr für die Namensänderung meines Poltergeistes",
+    "Rückerstattung für die 'unsichtbare Tinte', die lila war",
+    "Ein Dutzend Flaschen 'Trank des lebenden Todes' (für meine Pflanzen)",
+    "Investition in eine Zeitung, die nur gute Nachrichten druckt",
+    "Dein Anteil an der 'Verkaufe-gebrauchte-Zauberstäbe'-Börse",
+    "Ein selbst-schaukelnder Schaukelstuhl",
+    "Bußgeld für das Füttern der Wasserspeier",
+    "Ein verzauberter Weinkeller, der den Wein perfekt altern lässt",
+    "Kosten für die Umschulung meines Irrwichts (er soll jetzt Komplimente machen)",
+    "Ein Set 'singender Pflanzen', die Opernarien schmettern",
+    "Ein Ticket für die 'Meisterschaft im Zauberer-Duell'",
+    "Rückzahlung für den 'Kraft-Trank', der mich nur müde gemacht hat",
+    "Anzahlung für einen Drachen (nur ein kleiner, versprochen)",
+    "Ein Glas Phönix-Asche (ideal für den Kamin)",
+    "Dein Gewinn aus der Wette, welches Passwort die Fette Dame heute hat",
+    "Ein Kurs in 'Wie man sich unsichtbar macht, ohne einen Umhang zu benutzen'",
+    "Ein selbst-spielendes Klavier, das nur traurige Lieder kennt",
+    "Versicherung gegen Diebstahl durch Niffler",
+    "Ein verzauberter Toaster, der Gesichter auf den Toast brennt",
 ];
 
 const SendMoneyView: React.FC<{
@@ -696,6 +969,243 @@ const SendMoneyView: React.FC<{
                     <button onClick={handleSend} className="w-full text-black bg-white hover:bg-gray-200 font-bold rounded-full text-base h-[3.75rem] transition-colors">
                         Senden
                     </button>
+                </div>
+            </div>
+        </div>
+    );
+};
+
+const RequestMoneyView: React.FC<{
+    currentUser: User;
+    users: User[];
+    moneyRequests: MoneyRequest[];
+    onCreateRequest: (requesteeIds: string[], amount: { g: number; s: number; k: number }, note?: string) => Promise<void>;
+    onAcceptRequest: (request: MoneyRequest) => Promise<void>;
+    onRejectRequest: (requestId: string) => Promise<void>;
+}> = ({ currentUser, users, moneyRequests, onCreateRequest, onAcceptRequest, onRejectRequest }) => {
+    // Form state
+    const [requesteeIds, setRequesteeIds] = useState<string[]>([]);
+    const [galleons, setGalleons] = useState('');
+    const [sickles, setSickles] = useState('');
+    const [knuts, setKnuts] = useState('');
+    const [note, setNote] = useState('');
+    const [formError, setFormError] = useState('');
+    const [formSuccess, setFormSuccess] = useState('');
+    const [searchTerm, setSearchTerm] = useState('');
+    const [notePlaceholder, setNotePlaceholder] = useState('z.B. für Butterbier');
+
+    // Request list state
+    const [requestError, setRequestError] = useState('');
+    const [dismissedRejectedIds, setDismissedRejectedIds] = useState<string[]>([]);
+
+    useEffect(() => {
+        const randomPlaceholder = notePlaceholders[Math.floor(Math.random() * notePlaceholders.length)];
+        setNotePlaceholder(`z.B. ${randomPlaceholder}`);
+    }, []);
+
+    const otherUsers = users
+        .filter(u => u.id !== currentUser.id && !u.is_deleted)
+        .sort((a, b) => a.name.localeCompare(b.name));
+
+    const handleRequesteeToggle = (userId: string) => {
+        setRequesteeIds(prev =>
+            prev.includes(userId)
+                ? prev.filter(id => id !== userId)
+                : [...prev, userId]
+        );
+    };
+
+    const filteredUsers = otherUsers.filter(user => user.name.toLowerCase().includes(searchTerm.toLowerCase()));
+
+    const handleCreateRequest = async () => {
+        setFormError('');
+        setFormSuccess('');
+        if (requesteeIds.length === 0) {
+            setFormError('Bitte wähle mindestens einen Empfänger aus.');
+            return;
+        }
+
+        const amount = {
+            g: parseInt(galleons) || 0,
+            s: parseInt(sickles) || 0,
+            k: parseInt(knuts) || 0
+        };
+        // Fix: Call currencyToKnuts with the correct object shape
+        const amountInKnuts = currencyToKnuts({ galleons: amount.g, sickles: amount.s, knuts: amount.k });
+
+        if (amountInKnuts <= 0) {
+            setFormError('Bitte gib einen Betrag größer als 0 an.');
+            return;
+        }
+
+        try {
+            await onCreateRequest(requesteeIds, amount, note.trim());
+            setFormSuccess('Anfrage(n) erfolgreich gesendet.');
+            setRequesteeIds([]);
+            setGalleons('');
+            setSickles('');
+            setKnuts('');
+            setNote('');
+        } catch (e: any) {
+            setFormError(e.message);
+        }
+    };
+
+    const incomingRequests = moneyRequests.filter(r => r.requestee_id === currentUser.id && r.status === 'pending');
+    const yourOpenRequests = moneyRequests.filter(r => r.requester_id === currentUser.id && r.status === 'pending');
+    const yourRejectedRequests = moneyRequests.filter(r => r.requester_id === currentUser.id && r.status === 'rejected' && !dismissedRejectedIds.includes(r.id));
+    
+    const handleAccept = async (request: MoneyRequest) => {
+        setRequestError('');
+        try {
+            if (currentUser.balance < request.amount) {
+                const canonicalBalance = knutsToCanonical(currentUser.balance);
+                const canonicalRequest = knutsToCanonical(request.amount);
+                setRequestError(`Du hast nicht genug Geld. Du benötigst ${canonicalRequest.galleons}G ${canonicalRequest.sickles}S ${canonicalRequest.knuts}K, hast aber nur ${canonicalBalance.galleons}G ${canonicalBalance.sickles}S ${canonicalBalance.knuts}K.`);
+                return;
+            }
+            await onAcceptRequest(request);
+        } catch (e: any) {
+            setRequestError(e.message);
+        }
+    };
+
+    const handleReject = async (requestId: string) => {
+        setRequestError('');
+        try {
+            await onRejectRequest(requestId);
+        } catch (e: any) {
+            setRequestError(e.message);
+        }
+    };
+
+    const handleDismissRejected = (requestId: string) => {
+        setDismissedRejectedIds(prev => [...prev, requestId]);
+    };
+
+    const commonInputStyles = "w-full p-4 bg-[#FFFFFF21] border border-[#FFFFFF59] rounded-2xl focus:ring-2 focus:ring-white focus:outline-none transition-shadow";
+    const AmountDisplay: React.FC<{ amount: number }> = ({ amount }) => {
+        const canonical = knutsToCanonical(amount);
+        return (
+            <>
+                {`${canonical.galleons.toLocaleString('de-DE')} `}<span className="text-lg opacity-70">G</span>
+                {`, ${canonical.sickles.toLocaleString('de-DE')} `}<span className="text-lg opacity-70">S</span>
+                {`, ${canonical.knuts.toLocaleString('de-DE')} `}<span className="text-lg opacity-70">K</span>
+            </>
+        );
+    };
+
+    return (
+        <div className="space-y-8">
+            {/* Form to create a request */}
+            <div className="space-y-6">
+                <h2 className="text-3xl sm:text-4xl font-bold">Geld anfordern</h2>
+                <div className="bg-[#FFFFFF21] rounded-3xl p-6 sm:p-8 border border-[#FFFFFF59]">
+                    <div className="space-y-6">
+                        <div>
+                            <label className="block mb-2 text-sm font-medium opacity-80">Von</label>
+                            <input
+                                type="text"
+                                placeholder="Nutzer suchen..."
+                                value={searchTerm}
+                                onChange={e => setSearchTerm(e.target.value)}
+                                className={`${commonInputStyles} mb-2`}
+                            />
+                            <div className="bg-[#FFFFFF21] border border-[#FFFFFF59] rounded-2xl p-2 max-h-48 overflow-y-auto">
+                                {filteredUsers.length > 0 ? (
+                                    filteredUsers.map(user => (
+                                        <label key={user.id} className={`flex items-center p-3 rounded-xl cursor-pointer transition-colors ${requesteeIds.includes(user.id) ? 'bg-white/10' : 'hover:bg-white/5'}`}>
+                                            <input
+                                                type="checkbox"
+                                                checked={requesteeIds.includes(user.id)}
+                                                onChange={() => handleRequesteeToggle(user.id)}
+                                                className="w-5 h-5 rounded-md bg-black/30 border-white/50 text-green-500 focus:ring-green-500/50"
+                                            />
+                                            <span className="ml-3 font-medium">{user.name}</span>
+                                            <span className={`ml-auto text-sm font-semibold ${houseTextColors[user.house]}`}>{user.house}</span>
+                                        </label>
+                                    ))
+                                ) : (
+                                    <p className="p-3 text-center opacity-70">Keine passenden Nutzer gefunden.</p>
+                                )}
+                            </div>
+                        </div>
+                        <div>
+                            <label className="block mb-2 text-sm font-medium opacity-80">Betrag (pro Person)</label>
+                            <div className="grid grid-cols-3 gap-4">
+                                <input type="number" placeholder="Galleonen" value={galleons} onChange={e => setGalleons(e.target.value)} className={commonInputStyles} />
+                                <input type="number" placeholder="Sickel" value={sickles} onChange={e => setSickles(e.target.value)} className={commonInputStyles} />
+                                <input type="number" placeholder="Knut" value={knuts} onChange={e => setKnuts(e.target.value)} className={commonInputStyles} />
+                            </div>
+                        </div>
+                        <div>
+                            <label htmlFor="request-note" className="block mb-2 text-sm font-medium opacity-80">Notiz (optional)</label>
+                            <input type="text" id="request-note" value={note} onChange={e => setNote(e.target.value)} className={commonInputStyles} placeholder={notePlaceholder} maxLength={100} />
+                        </div>
+                        {formError && <p className="text-red-400 text-sm text-center">{formError}</p>}
+                        {formSuccess && <p className="text-green-400 text-sm text-center">{formSuccess}</p>}
+                        <button onClick={handleCreateRequest} className="w-full text-black bg-white hover:bg-gray-200 font-bold rounded-full text-base h-[3.75rem] transition-colors">
+                            Anfordern
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            {/* Lists of requests */}
+            <div className="space-y-6">
+                <h3 className="text-2xl font-bold">Offene Anfragen</h3>
+                {requestError && <p className="text-red-400 text-sm text-center bg-red-500/10 p-3 rounded-xl">{requestError}</p>}
+                
+                {/* Incoming Requests */}
+                <div>
+                    <h4 className="text-xl font-bold mb-2">Anfragen an dich</h4>
+                    <div className="space-y-4">
+                        {incomingRequests.length > 0 ? (
+                            incomingRequests.map(req => (
+                                <div key={req.id} className="bg-[#FFFFFF21] rounded-3xl p-4 sm:p-5 border border-[#FFFFFF59]">
+                                    <div className="flex justify-between items-start">
+                                        <div>
+                                            <p className="font-bold">
+                                                <span className={houseTextColors[req.requester?.house || '']}>{req.requester?.name || 'Unbekannt'}</span>
+                                            </p>
+                                            <p className="text-sm opacity-70">{new Date(req.created_at).toLocaleString('de-DE')}</p>
+                                        </div>
+                                        <p className="font-bold text-lg text-yellow-300"><AmountDisplay amount={req.amount} /></p>
+                                    </div>
+                                    {req.note && <p className="text-sm opacity-80 mt-2 pt-2 border-t border-white/10">{req.note}</p>}
+                                    <div className="flex gap-4 mt-4">
+                                        <button onClick={() => handleReject(req.id)} className="w-full h-12 flex items-center justify-center bg-red-600/20 hover:bg-red-600/40 text-red-300 font-bold rounded-full transition-colors"><XIcon className="w-7 h-7" /></button>
+                                        <button onClick={() => handleAccept(req)} className="w-full h-12 flex items-center justify-center bg-green-600/20 hover:bg-green-600/40 text-green-300 font-bold rounded-full transition-colors"><CheckIcon className="w-7 h-7" /></button>
+                                    </div>
+                                </div>
+                            ))
+                        ) : <p className="text-center opacity-70 p-4">Du hast keine offenen Anfragen.</p>}
+                    </div>
+                </div>
+
+                {/* Your Requests */}
+                <div>
+                    <h4 className="text-xl font-bold mb-2">Status deiner Anfragen</h4>
+                    <div className="space-y-3">
+                         {yourRejectedRequests.length > 0 && yourRejectedRequests.map(req => (
+                             <div key={req.id} className="relative bg-red-500/10 rounded-2xl p-4 border border-red-500/30">
+                                <p className="text-sm"><strong className={houseTextColors[req.requestee?.house || '']}>{req.requestee?.name || 'Unbekannt'}</strong> hat deine Anfrage über <strong className="text-red-300"><AmountDisplay amount={req.amount} /></strong> abgelehnt.</p>
+                                <button onClick={() => handleDismissRejected(req.id)} className="absolute top-1 right-1 p-1 text-white/50 hover:text-white"><XIcon className="w-4 h-4" /></button>
+                            </div>
+                        ))}
+                         {yourOpenRequests.length > 0 ? (
+                            yourOpenRequests.map(req => (
+                                <div key={req.id} className="bg-black/20 rounded-2xl p-4">
+                                    <div className="flex justify-between items-center">
+                                        <p className="text-sm">Wartet auf Antwort von <strong className={houseTextColors[req.requestee?.house || '']}>{req.requestee?.name || 'Unbekannt'}</strong></p>
+                                        <p className="text-sm font-semibold opacity-80"><AmountDisplay amount={req.amount} /></p>
+                                    </div>
+                                </div>
+                            ))
+                        ) : yourRejectedRequests.length === 0 ? (
+                            <p className="text-center opacity-70 p-4">Du hast keine Anfragen gesendet.</p>
+                        ) : null}
+                    </div>
                 </div>
             </div>
         </div>
@@ -1159,14 +1669,18 @@ const Dashboard: React.FC<DashboardProps> = ({
   currentUser,
   users,
   transactions,
+  moneyRequests,
   onSendMoney,
   isKing,
   globalTransactions,
   onUpdateUser,
   onSoftDeleteUser,
-  onRestoreUser
+  onRestoreUser,
+  onCreateRequest,
+  onAcceptRequest,
+  onRejectRequest,
 }) => {
-  const [currentView, setCurrentView] = useState<'send' | 'history' | 'admin'>('send');
+  const [currentView, setCurrentView] = useState<'send' | 'history' | 'admin' | 'request'>('send');
   const [displayBalance, setDisplayBalance] = useState<Currency>(() => knutsToCanonical(currentUser.balance));
   const prevTransactionsRef = useRef(transactions);
   const prevBalanceRef = useRef(currentUser.balance);
@@ -1240,6 +1754,16 @@ const Dashboard: React.FC<DashboardProps> = ({
                     onSendMoney={onSendMoney}
                 />
             )}
+            {currentView === 'request' && (
+                <RequestMoneyView
+                    currentUser={currentUser}
+                    users={users}
+                    moneyRequests={moneyRequests}
+                    onCreateRequest={onCreateRequest}
+                    onAcceptRequest={onAcceptRequest}
+                    onRejectRequest={onRejectRequest}
+                />
+            )}
             {currentView === 'history' && <HistoryView transactions={transactions} currentUserId={currentUser.id} />}
             {currentView === 'admin' && isKing && globalTransactions && (
                 <AdminView
@@ -1262,6 +1786,12 @@ const Dashboard: React.FC<DashboardProps> = ({
             icon={<SendIcon />}
             isActive={currentView === 'send'}
             onClick={() => setCurrentView('send')}
+          />
+          <NavButton
+            label="Anfordern"
+            icon={<RequestIcon className="w-6 h-6" />}
+            isActive={currentView === 'request'}
+            onClick={() => setCurrentView('request')}
           />
           <NavButton
             label="Verlauf"

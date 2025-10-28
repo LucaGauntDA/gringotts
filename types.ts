@@ -30,3 +30,23 @@ export interface Currency {
   sickles: number;
   knuts: number;
 }
+
+export enum MoneyRequestStatus {
+  Pending = 'pending',
+  Accepted = 'accepted',
+  Rejected = 'rejected',
+}
+
+export interface MoneyRequest {
+  id: string;
+  requester_id: string;
+  requestee_id: string;
+  amount: number; // in Knuts
+  note?: string;
+  status: MoneyRequestStatus;
+  created_at: string;
+  amount_breakdown?: { g: number; s: number; k: number };
+  // For UI rendering
+  requester?: { id: string, name: string, house: string };
+  requestee?: { id: string, name: string, house: string };
+}

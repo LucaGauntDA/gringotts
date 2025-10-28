@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import type { User, Transaction } from './types';
+import type { User, Transaction, MoneyRequest } from './types';
 import { House } from './types';
 import LoginScreen from './components/LoginScreen';
 import OtpScreen from './components/OtpScreen';
@@ -10,7 +10,7 @@ import ConnectionErrorScreen from './components/ConnectionErrorScreen';
 import AccountDeletedScreen from './components/AccountDeletedScreen';
 import { supabase, isSupabaseConfigured } from './supabaseClient';
 import type { AuthSession } from '@supabase/supabase-js';
-import { currencyToKnuts } from './utils';
+import { currencyToKnuts, knutsToCanonical } from './utils';
 
 const KING_EMAIL = 'luca.lombino@icloud.com';
 
@@ -18,6 +18,7 @@ const App: React.FC = () => {
   const [session, setSession] = useState<AuthSession | null>(null);
   const [users, setUsers] = useState<User[]>([]);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
+  const [moneyRequests, setMoneyRequests] = useState<MoneyRequest[]>([]);
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
   const [authError, setAuthError] = useState<string | null>(null);
@@ -38,6 +39,7 @@ const App: React.FC = () => {
         setUsers([]);
         setTransactions([]);
         setGlobalTransactions([]);
+        setMoneyRequests([]);
         setIsKing(false);
         return;
     }
@@ -68,8 +70,19 @@ const App: React.FC = () => {
         
         if (transError) throw transError;
         setTransactions(transData || []);
+
+        const { data: requestsData, error: requestsError } = await supabase
+            .from('money_request')
+            .select('*, requester:users!requester_id(id, name, house), requestee:users!requestee_id(id, name, house)')
+            .or(`requester_id.eq.${currentUserData.id},requestee_id.eq.${currentUserData.id}`)
+            .order('created_at', { ascending: false });
+
+        if (requestsError) throw requestsError;
+        setMoneyRequests(requestsData || []);
+
     } else {
         setTransactions([]);
+        setMoneyRequests([]);
     }
 
     if (userIsKing) {
@@ -129,6 +142,7 @@ const App: React.FC = () => {
             setUsers([]);
             setTransactions([]);
             setGlobalTransactions([]);
+            setMoneyRequests([]);
             setIsKing(false);
         }
     });
@@ -250,6 +264,64 @@ const App: React.FC = () => {
     await refreshData();
   };
 
+  const handleCreateRequest = async (requesteeIds: string[], amount: { g: number; s: number; k: number }, note?: string) => {
+    if (!currentUser) throw new Error("Nicht eingeloggt.");
+    const amountInKnuts = currencyToKnuts({ galleons: amount.g, sickles: amount.s, knuts: amount.k });
+    if (amountInKnuts <= 0) throw new Error("Betrag muss positiv sein.");
+
+    const newRequests = requesteeIds.map(requesteeId => ({
+        requester_id: currentUser.id,
+        requestee_id: requesteeId,
+        amount: amountInKnuts,
+        note: note,
+        amount_breakdown: { g: amount.g, s: amount.s, k: amount.k },
+        status: 'pending',
+    }));
+
+    const { error } = await supabase.from('money_request').insert(newRequests);
+    if (error) throw error;
+    await refreshData();
+  };
+
+  const handleAcceptRequest = async (request: MoneyRequest) => {
+    if (!currentUser) throw new Error("Nicht eingeloggt.");
+    
+    const acceptanceNote = `Angefordert${request.note ? `: ${request.note}` : ''}`;
+    
+    // Fix: Correctly handle the union type for the request amount
+    const amountFromRequest = request.amount_breakdown || knutsToCanonical(request.amount);
+
+    let amountToSend: { g: number; s: number; k: number; };
+
+    if ("galleons" in amountFromRequest) {
+      // It's Currency
+      amountToSend = { g: amountFromRequest.galleons, s: amountFromRequest.sickles, k: amountFromRequest.knuts };
+    } else {
+      // It's { g, s, k }
+      amountToSend = amountFromRequest;
+    }
+    
+    await handleSendMoney([request.requester_id], amountToSend, acceptanceNote);
+
+    const { error } = await supabase
+        .from('money_request')
+        .update({ status: 'accepted' })
+        .eq('id', request.id);
+    if (error) throw error;
+
+    await refreshData();
+  };
+
+  const handleRejectRequest = async (requestId: string) => {
+     const { error } = await supabase
+        .from('money_request')
+        .update({ status: 'rejected' })
+        .eq('id', requestId);
+    if (error) throw error;
+    await refreshData();
+  };
+
+
   const handleUpdateUser = async (userId: string, updates: { name: string; house: House; balance: number }) => {
     if (!isKing) throw new Error("Nur der King kann Nutzerdaten ändern.");
 
@@ -337,12 +409,16 @@ const App: React.FC = () => {
             currentUser={currentUser}
             users={users}
             transactions={transactions}
+            moneyRequests={moneyRequests}
             onSendMoney={handleSendMoney}
             isKing={isKing}
             globalTransactions={globalTransactions}
             onUpdateUser={handleUpdateUser}
             onSoftDeleteUser={handleSoftDeleteUser}
             onRestoreUser={handleRestoreUser}
+            onCreateRequest={handleCreateRequest}
+            onAcceptRequest={handleAcceptRequest}
+            onRejectRequest={handleRejectRequest}
           />
         ) : (
             // This state can happen briefly while currentUser is being fetched after session is set.
