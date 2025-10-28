@@ -9,51 +9,48 @@ export interface Currency {
 }
 
 /**
- * Converts a total number of Knuts into Galleons, Sickles, and Knuts.
- * @param totalKnuts The total amount in Knuts.
+ * Converts a total number of Knuts into a canonical representation of
+ * Galleons, Sickles, and Knuts. This can also convert a non-canonical
+ * currency object by first converting it to total knuts.
+ * @param totalKnutsOrCurrency The total amount in Knuts or a non-canonical Currency object.
  * @returns An object with the amount of galleons, sickles, and knuts.
  */
-export const knutsToCurrency = (totalKnuts: number): Currency => {
-  if (isNaN(totalKnuts) || totalKnuts < 0) {
+export function knutsToCanonical(totalKnutsOrCurrency: number | Currency): Currency {
+  let totalKnuts: number;
+
+  if (typeof totalKnutsOrCurrency === 'number') {
+    totalKnuts = totalKnutsOrCurrency;
+  } else {
+    totalKnuts = currencyToKnuts(totalKnutsOrCurrency);
+  }
+  
+  if (isNaN(totalKnuts)) {
     return { galleons: 0, sickles: 0, knuts: 0 };
   }
   
-  const galleons = Math.floor(totalKnuts / GALLEON_IN_KNUTS);
-  let remainder = totalKnuts % GALLEON_IN_KNUTS;
-  
-  const sickles = Math.floor(remainder / SICKLE_IN_KNUTS);
-  remainder = remainder % SICKLE_IN_KNUTS;
-  
-  const knuts = remainder;
-  
-  return { galleons, sickles, knuts };
-};
+  let remainingKnuts = totalKnuts;
+
+  const galleons = Math.floor(remainingKnuts / GALLEON_IN_KNUTS);
+  remainingKnuts %= GALLEON_IN_KNUTS;
+
+  const sickles = Math.floor(remainingKnuts / SICKLE_IN_KNUTS);
+  remainingKnuts %= SICKLE_IN_KNUTS;
+
+  return {
+    galleons,
+    sickles,
+    knuts: remainingKnuts,
+  };
+}
+
 
 /**
- * Converts a Currency object (Galleons, Sickles, Knuts) into a total number of Knuts.
- * @param currency An object containing galleons, sickles, and knuts.
+ * Converts a Currency object (Galleons, Sickles, Knuts) into a single
+ * total value in Knuts.
+ * @param currency An object with galleons, sickles, and knuts properties.
  * @returns The total value in Knuts.
  */
-export const currencyToKnuts = ({ galleons, sickles, knuts }: Currency): number => {
-  const g = galleons || 0;
-  const s = sickles || 0;
-  const k = knuts || 0;
-  return (g * GALLEON_IN_KNUTS) + (s * SICKLE_IN_KNUTS) + k;
-};
-
-/**
- * Formats a total number of Knuts into a human-readable string.
- * @param totalKnuts The total amount in Knuts.
- * @returns A formatted string like "10 G, 5 S, 20 K".
- */
-export const formatCurrency = (totalKnuts: number): string => {
-  const { galleons, sickles, knuts } = knutsToCurrency(totalKnuts);
-  const parts = [];
-  if (galleons > 0) parts.push(`${galleons} G`);
-  if (sickles > 0) parts.push(`${sickles} S`);
-  if (knuts > 0) parts.push(`${knuts} K`);
-  
-  if (parts.length === 0) return "0 K";
-  
-  return parts.join(', ');
-};
+export function currencyToKnuts(currency: Partial<Currency>): number {
+  const { galleons = 0, sickles = 0, knuts = 0 } = currency;
+  return (galleons * GALLEON_IN_KNUTS) + (sickles * SICKLE_IN_KNUTS) + knuts;
+}

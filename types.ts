@@ -24,3 +24,9 @@ export enum House {
   Ravenclaw = 'Ravenclaw',
   Slytherin = 'Slytherin',
 }
+
+export interface Currency {
+  galleons: number;
+  sickles: number;
+  knuts: number;
+}

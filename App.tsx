@@ -10,7 +10,7 @@ import ConnectionErrorScreen from './components/ConnectionErrorScreen';
 import AccountDeletedScreen from './components/AccountDeletedScreen';
 import { supabase, isSupabaseConfigured } from './supabaseClient';
 import type { AuthSession } from '@supabase/supabase-js';
-import { formatCurrency } from './utils';
+import { currencyToKnuts } from './utils';
 
 const KING_EMAIL = 'luca.lombino@icloud.com';
 
@@ -215,8 +215,11 @@ const App: React.FC = () => {
     // onAuthStateChange will clear the state
   };
 
-  const handleSendMoney = async (receiverIds: string[], amountInKnuts: number, note?: string) => {
+  const handleSendMoney = async (receiverIds: string[], amount: { g: number; s: number; k: number }, note?: string) => {
     if (!currentUser) throw new Error("Nicht eingeloggt.");
+    
+    const amountInKnuts = currencyToKnuts({ galleons: amount.g, sickles: amount.s, knuts: amount.k });
+
     if (amountInKnuts <= 0) throw new Error("Betrag muss positiv sein.");
     if (receiverIds.length === 0) throw new Error("Kein Empfänger ausgewählt.");
 
@@ -225,11 +228,14 @@ const App: React.FC = () => {
       throw new Error("Nicht genügend Guthaben.");
     }
 
+    const amountBreakdown = { g: amount.g, s: amount.s, k: amount.k };
+    const augmentedNote = `${note || ''}|~|${JSON.stringify(amountBreakdown)}`;
+
     // Use an RPC function to ensure atomic transaction
     for (const receiverId of receiverIds) {
         const { error } = await supabase.rpc('send_money', {
             amount_in: amountInKnuts,
-            note_in: note || '',
+            note_in: augmentedNote,
             receiver_id_in: receiverId,
             sender_id_in: currentUser.id,
         });
@@ -259,7 +265,7 @@ const App: React.FC = () => {
 
     // Check if balance was changed and log a special transaction if so
     if (originalUser.balance !== updates.balance && currentUser) {
-        const note = `ADMIN_BALANCE_CHANGE::${currentUser.id}::${updates.balance}`;
+        const note = `ADMIN_BALANCE_CHANGE::${currentUser.id}::${userId}::${originalUser.balance}::${updates.balance}`;
         await supabase.from('transactions').insert({
             sender_id: currentUser.id, // The King is the "sender" of the change
             receiver_id: userId,
