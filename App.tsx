@@ -12,7 +12,8 @@ import { supabase, isSupabaseConfigured } from './supabaseClient';
 import type { AuthSession } from '@supabase/supabase-js';
 import { currencyToKnuts, knutsToCanonical } from './utils';
 
-const KING_EMAIL = 'luca.lombino@icloud.com';
+const ORIGINAL_KING_EMAIL = 'luca.lombino@icloud.com';
+const KING_EMAILS = [ORIGINAL_KING_EMAIL, 'da-hauspokal-orga@outlook.com'];
 
 const App: React.FC = () => {
   const [session, setSession] = useState<AuthSession | null>(null);
@@ -31,7 +32,7 @@ const App: React.FC = () => {
     const { data: { session }, error: sessionError } = await supabase.auth.getSession();
     if(sessionError) throw sessionError;
 
-    const userIsKing = session?.user?.email === KING_EMAIL;
+    const userIsKing = KING_EMAILS.includes(session?.user?.email ?? '');
     setIsKing(userIsKing);
 
      if (!session?.user) {
@@ -44,9 +45,9 @@ const App: React.FC = () => {
         return;
     }
 
-    // Fetch all users
+    // Fetch all users from the new view
     const { data: usersData, error: usersError } = await supabase
-        .from('users')
+        .from('users_with_email')
         .select('*');
     if (usersError) throw usersError;
     setUsers(usersData || []);
@@ -88,7 +89,7 @@ const App: React.FC = () => {
     if (userIsKing) {
       const { data: globalTransData, error: globalTransError } = await supabase
           .from('transactions')
-          .select('*, sender:users!sender_id(id, name, house), receiver:users!receiver_id(id, name, house)')
+          .select('*, sender:users_with_email!sender_id(id, name, house, email), receiver:users_with_email!receiver_id(id, name, house, email)')
           .order('created_at', { ascending: false });
       
       if (globalTransError) throw globalTransError;
@@ -368,6 +369,33 @@ const App: React.FC = () => {
     if (error) throw error;
     await refreshData();
   };
+  
+  const handleUpdateProfile = async (updates: { name?: string; house?: House; }) => {
+    if (!currentUser) throw new Error("Nicht eingeloggt.");
+    
+    const { error, count } = await supabase
+      .from('users')
+      .update(updates)
+      .eq('id', currentUser.id);
+
+    if (error) {
+        console.error('Supabase update error:', error);
+        throw new Error(`Profil-Update fehlgeschlagen: ${error.message}`);
+    }
+
+    if (count === 0 || count === null) {
+        // This is a common issue with RLS policies where the update fails silently.
+        console.warn('Supabase update affected 0 rows. This might be an RLS policy issue.');
+        throw new Error("Dein Profil konnte nicht gespeichert werden (0 Zeilen aktualisiert). Dies ist ein klassisches Anzeichen für ein Problem mit den Row-Level Security (RLS) Richtlinien in Supabase. Bitte überprüfe Folgendes in deinem Supabase-Projekt:\n1. Ist RLS für die 'users'-Tabelle überhaupt aktiviert?\n2. Existiert eine UPDATE-Richtlinie für die 'authenticated' Rolle?\n3. Lautet die Bedingung für diese Richtlinie 'auth.uid() = id'? (Sowohl für 'USING' als auch für 'WITH CHECK').\nOhne die korrekte UPDATE-Richtlinie blockiert Supabase die Anfrage stillschweigend.");
+    }
+
+    await refreshData();
+  };
+
+  const handleUpdatePassword = async (newPassword: string) => {
+    const { error } = await supabase.auth.updateUser({ password: newPassword });
+    if (error) throw error;
+  };
 
 
   if (loading) {
@@ -419,6 +447,8 @@ const App: React.FC = () => {
             onCreateRequest={handleCreateRequest}
             onAcceptRequest={handleAcceptRequest}
             onRejectRequest={handleRejectRequest}
+            onUpdateProfile={handleUpdateProfile}
+            onUpdatePassword={handleUpdatePassword}
           />
         ) : (
             // This state can happen briefly while currentUser is being fetched after session is set.

@@ -4,6 +4,7 @@ export interface User {
   house: House;
   balance: number; // Stored in the smallest denomination: Knuts
   is_deleted?: boolean;
+  email?: string;
 }
 
 export interface Transaction {
@@ -14,8 +15,8 @@ export interface Transaction {
   created_at: string; // Timestamp from Supabase is a string
   note?: string; // Optional note for the transaction
   // For UI rendering, we'll add these properties after fetching
-  sender?: { id: string, name: string, house: string };
-  receiver?: { id: string, name: string, house: string };
+  sender?: { id: string, name: string, house: string, email?: string };
+  receiver?: { id: string, name: string, house: string, email?: string };
 }
 
 export enum House {
@@ -40,6 +41,7 @@ export enum MoneyRequestStatus {
 export interface MoneyRequest {
   id: string;
   requester_id: string;
+
   requestee_id: string;
   amount: number; // in Knuts
   note?: string;
@@ -47,6 +49,6 @@ export interface MoneyRequest {
   created_at: string;
   amount_breakdown?: { g: number; s: number; k: number };
   // For UI rendering
-  requester?: { id: string, name: string, house: string };
-  requestee?: { id: string, name: string, house: string };
+  requester?: { id: string, name: string, house: string, email?: string };
+  requestee?: { id: string, name: string, house: string, email?: string };
 }

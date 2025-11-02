@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import type { User, Transaction, Currency, MoneyRequest } from '../types';
 import { House } from '../types';
-import { SendIcon, HistoryIcon, CrownIcon, UsersIcon, TrashIcon, RestoreIcon, UserEditIcon, UserIcon, FilterIcon, RequestIcon, CheckIcon, XIcon } from './icons';
+import { SendIcon, HistoryIcon, AdminIcon, UsersIcon, TrashIcon, RestoreIcon, UserEditIcon, UserIcon, FilterIcon, BanknotesIcon, CheckIcon, XIcon } from './icons';
 import { currencyToKnuts, knutsToCanonical } from '../utils';
 
 const houseTextColors: { [key: string]: string } = {
@@ -25,6 +25,8 @@ interface DashboardProps {
   onCreateRequest: (requesteeIds: string[], amount: { g: number; s: number; k: number }, note?: string) => Promise<void>;
   onAcceptRequest: (request: MoneyRequest) => Promise<void>;
   onRejectRequest: (requestId: string) => Promise<void>;
+  onUpdateProfile: (updates: { name?: string; house?: House; }) => Promise<void>;
+  onUpdatePassword: (password: string) => Promise<void>;
 }
 
 const UserEditModal: React.FC<{
@@ -32,9 +34,8 @@ const UserEditModal: React.FC<{
   onClose: () => void;
   onSave: (userId: string, updates: { name: string; house: House; balance: number }) => Promise<void>;
   onDelete: (userId: string) => Promise<void>;
-  isEditingSelf: boolean;
-  isKing: boolean;
-}> = ({ user, onClose, onSave, onDelete, isEditingSelf, isKing }) => {
+  currentUser: User;
+}> = ({ user, onClose, onSave, onDelete, currentUser }) => {
   const [name, setName] = useState(user.name);
   const [house, setHouse] = useState(user.house);
   const [galleons, setGalleons] = useState('');
@@ -42,6 +43,22 @@ const UserEditModal: React.FC<{
   const [knuts, setKnuts] = useState('');
   const [error, setError] = useState('');
   const [showConfirmDelete, setShowConfirmDelete] = useState(false);
+  
+  const ORIGINAL_KING_EMAIL = 'luca.lombino@icloud.com';
+  const KINGSLEY_EMAIL = 'da-hauspokal-orga@outlook.com';
+  const TEST_LUSA_EMAIL = 'lucagauntda7@gmail.com';
+
+  const isCurrentUserOriginalKing = currentUser.email === ORIGINAL_KING_EMAIL;
+  const isCurrentUserKingsley = currentUser.email === KINGSLEY_EMAIL;
+  
+  const isEditingOriginalKing = user.email === ORIGINAL_KING_EMAIL;
+  const isEditingTestLusa = user.email === TEST_LUSA_EMAIL;
+  const isEditingSelf = user.id === currentUser.id;
+
+  const canEdit = isCurrentUserOriginalKing || (isCurrentUserKingsley && !isEditingSelf && !isEditingOriginalKing && !isEditingTestLusa);
+  const canDelete = !isEditingSelf && !(isCurrentUserKingsley && (isEditingOriginalKing || isEditingTestLusa));
+  const showCannotEditMessage = isEditingSelf && !isCurrentUserOriginalKing;
+
 
   useEffect(() => {
     const currency = knutsToCanonical(user.balance);
@@ -61,8 +78,8 @@ const UserEditModal: React.FC<{
       sickles: parseInt(sickles) || 0,
       knuts: parseInt(knuts) || 0,
     });
-    // The King can set a negative balance for anyone, including themself.
-    if (balance < 0 && !isKing) {
+    // The Kings can set a negative balance for anyone.
+    if (balance < 0 && !isCurrentUserOriginalKing && !isCurrentUserKingsley) {
         setError('Der Kontostand darf nicht negativ sein.');
         return;
     }
@@ -84,7 +101,6 @@ const UserEditModal: React.FC<{
   }
 
   const commonInputStyles = "w-full p-3 bg-black/20 border border-white/20 rounded-xl focus:ring-2 focus:ring-white focus:outline-none transition-shadow text-base";
-  const canEdit = !isEditingSelf || isKing;
 
   return (
     <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4 animate-fadeIn" onClick={onClose}>
@@ -122,10 +138,10 @@ const UserEditModal: React.FC<{
                         </div>
                          {error && <p className="text-red-400 text-sm text-center">{error}</p>}
                         <div className="flex flex-col sm:flex-row gap-4 pt-2">
-                             {!isEditingSelf && <button onClick={() => setShowConfirmDelete(true)} className="w-full sm:w-auto flex-1 text-white bg-red-600/80 hover:bg-red-600 font-bold rounded-full h-12 transition-colors order-2 sm:order-1">Löschen</button>}
+                             {canDelete && <button onClick={() => setShowConfirmDelete(true)} className="w-full sm:w-auto flex-1 text-white bg-red-600/80 hover:bg-red-600 font-bold rounded-full h-12 transition-colors order-2 sm:order-1">Löschen</button>}
                             <button onClick={handleSave} className="w-full sm:w-auto flex-1 text-black bg-white hover:bg-gray-200 font-bold rounded-full h-12 transition-colors order-1 sm:order-2" disabled={!canEdit}>Speichern</button>
                         </div>
-                        {isEditingSelf && !isKing && <p className="text-xs text-center opacity-60 pt-2">Du kannst dein eigenes Profil nicht bearbeiten. Bitte den King um Hilfe.</p>}
+                        {showCannotEditMessage && <p className="text-xs text-center opacity-60 pt-2">Du kannst dein eigenes Profil nicht bearbeiten. Bitte Lusa-Luca um Hilfe.</p>}
                     </div>
                 </div>
             )}
@@ -299,7 +315,6 @@ const notePlaceholders = [
     "Ein verzaubertes Lesezeichen, das die Geschichte vorliest",
     "Ein magischer Federkiel, der nicht kleckst",
     "Ein Set schwebender Kerzen für mein Zimmer",
-    "Ein Zauber, der die Schuhe selbst bindet",
     "Eine Flasche Elfenwein",
     "Ein verzauberter Regenschirm, der einen immer trocken hält",
     "Ein magischer Fön, der die Haare in Sekunden stylt",
@@ -426,7 +441,7 @@ const notePlaceholders = [
     "Ein magischer Pinsel, der das perfekte Make-up zaubert",
     "Ein Set selbst-pflegender Hautcremes",
     "Eine verzauberte Haarbürste, die Knoten löst",
-    "Ein magischer Spiegel, der die Zukunft zeigt (vielleicht)",
+    "Ein magischer Spiegel, die die Zukunft zeigt (vielleicht)",
     "Ein Set selbst-schneidender Haarscheren",
     "Ein verzauberter Rasierer, der nie stumpf wird",
     "Ein magisches Parfüm, das unwiderstehlich macht",
@@ -708,7 +723,7 @@ const notePlaceholders = [
     "Kosten für die professionelle Reinigung meines Denkariums",
     "Ein Set 'Sprechender Socken', die Modetipps geben",
     "Ein Ticket für das jährliche Troll-Ballett",
-    "Rückzahlung für den 'Ewigen Kaugummi', der nach drei Minuten den Geschmack verlor",
+    "Rückerstattung für den 'Ewigen Kaugummi', der nach drei Minuten den Geschmack verlor",
     "Anzahlung für eine Villa in Little Hangleton (renovierungsbedürftig)",
     "Ein Glas getrockneter Billywig-Stacheln",
     "Dein Gewinn aus dem Zauberer-Bingo letzte Woche",
@@ -763,7 +778,7 @@ const notePlaceholders = [
     "Bußgeld für das Füttern der Wasserspeier",
     "Ein verzauberter Weinkeller, der den Wein perfekt altern lässt",
     "Kosten für die Umschulung meines Irrwichts (er soll jetzt Komplimente machen)",
-    "Ein Set 'singender Pflanzen', die Opernarien schmettern",
+    "Ein Set 'singender Pflanzen', die die Opernarien schmettern",
     "Ein Ticket für die 'Meisterschaft im Zauberer-Duell'",
     "Rückzahlung für den 'Kraft-Trank', der mich nur müde gemacht hat",
     "Anzahlung für einen Drachen (nur ein kleiner, versprochen)",
@@ -774,6 +789,400 @@ const notePlaceholders = [
     "Versicherung gegen Diebstahl durch Niffler",
     "Ein verzauberter Toaster, der Gesichter auf den Toast brennt",
 ];
+
+const requestNotePlaceholders = [
+    "Schuldest mir noch für das Butterbier",
+    "Bitte überweise deinen Anteil für die Zaubertrankzutaten",
+    "Geld für die Reparatur meines Besens",
+    "Leihst du mir Geld für den Ausflug nach Hogsmeade?",
+    "Rückerstattung für das Buch von Flourish & Blotts",
+    "Sammle für ein Geburtstagsgeschenk für Hagrid, dein Beitrag?",
+    "Mein Anteil an der letzten Runde Feuerwhiskey",
+    "Brauche dringend Knuts für den Fahrenden Ritter",
+    "Dein Beitrag für die Team-Umhänge",
+    "Erinnerung: Du wolltest mir das Geld für die Schokofrösche zurückgeben",
+    "Kaution für die Weasley-Zwillinge, mal wieder...",
+    "Könntest du die Rechnung im Honigtopf übernehmen?",
+    "Anteil für das Abendessen in den Drei Besen",
+    "Spende für S.P.E.W., machst du mit?",
+    "Bitte um einen kleinen Zuschuss für neue Federkiele",
+    "Wetteinsatz für das nächste Quidditch-Spiel",
+    "Ich lege für die Tickets für die Weltmeisterschaft aus, dein Anteil bitte",
+    "Dein Beitrag zur Partykasse im Gemeinschaftsraum",
+    "Rückzahlung für die verlorene Wette",
+    "Geld für ein neues Exemplar von 'Geschichte der Zauberei'",
+    "Bitte um eine kleine Finanzspritze für meine Niffler-Zucht",
+    "Ich brauche Geld für ein neues Paar Drachenleder-Handschuhe",
+    "Dein Anteil an der Miete für den Besenschrank",
+    "Kannst du mir Geld für ein neues Teleskop leihen?",
+    "Rückerstattung für die Kräuterkunde-Ausrüstung",
+    "Dein Beitrag für den 'Wir-hassen-Umbridge'-Fond",
+    "Ich sammle für Dobbys Socken-Kollektion",
+    "Bitte um eine kleine Unterstützung für meine Forschungen",
+    "Dein Anteil für das Abwehren des Poltergeistes",
+    "Rückerstattung für den Beruhigungstrank vor den ZAGs",
+    "Leihst du mir was für eine seltene Alraune?",
+    "Kostenbeteiligung für die Entfluchung meines Kessels",
+    "Sammelbestellung bei Eeylops Eulenkaufhaus, dein Anteil bitte",
+    "Ich brauche Geld, um Peeves zu bestechen",
+    "Dein Beitrag für die nächste Sitzung von Dumbledores Armee",
+    "Rückzahlung für das Porto des Heulers an deine Mutter",
+    "Finanzspritze für mein Projekt 'selbst-umrührende Kessel'",
+    "Anteil an den Kosten für die Beseitigung des portablen Sumpfes",
+    "Leihst du mir Geld für einen Liebestrank? (rein wissenschaftlich)",
+    "Rückerstattung für die Nasch-und-Schwänz-Leckereien",
+    "Dein Beitrag zum Kauf eines neuen Tarnumhangs (unserer hat ein Loch)",
+    "Sammle für die Renovierung der Heulenden Hütte",
+    "Bitte um einen Vorschuss für die nächste Runde 'Explodierender Snap'",
+    "Dein Anteil für die Pflege von Hagrids neuem 'Haustier'",
+    "Geld für eine neue Ausgabe des Klitterers",
+    "Rückerstattung für die Zutaten des Felix Felicis",
+    "Bitte um eine Spende für die 'Rettet die Hippogreife'-Initiative",
+    "Dein Beitrag zur Reparatur des Verschwindekabinetts",
+    "Ich lege für die Apparier-Prüfungsgebühr aus",
+    "Sammle für eine Statue zu Ehren von Dumbledore",
+    "Rückerstattung für die Butterbier-Runde von letzter Woche",
+    "Dein Anteil am Kauf des 'Monsterbuchs der Monster'",
+    "Finanzierung für die Suche nach dem Stein der Weisen",
+    "Geld für eine neue Zeitumkehrer-Versicherung",
+    "Bitte um einen Zuschuss für meine Sammlung seltener Zauberer-Karten",
+    "Dein Beitrag zur Bestechung der fetten Dame",
+    "Ich brauche Geld, um meinen Zauberstab reparieren zu lassen",
+    "Rückerstattung für die Quidditch-Ausrüstung",
+    "Sammle für ein Abschiedsgeschenk für Professor Lupin",
+    "Dein Anteil am Feuerwerk der Weasleys",
+    "Geld für ein neues Set Gobstones",
+    "Bitte um eine kleine Leihgabe für eine Flasche Veritaserum",
+    "Rückerstattung für die Miete des Denkariums",
+    "Dein Beitrag für die nächste Expedition in den Verbotenen Wald",
+    "Ich lege für die Heiltränke nach dem letzten Spiel aus",
+    "Sammle Geld für die Befreiung der Hauselfen",
+    "Rückerstattung für die Anti-Schummel-Federkiele",
+    "Dein Anteil an der Bestellung bei Zonko's Scherzartikelladen",
+    "Geld für die Reinigung der Eulerei",
+    "Bitte um Unterstützung für mein Duellierclub-Training",
+    "Rückerstattung für die Pflege von Krätze",
+    "Dein Anteil am Kauf seltener Zaubertrank-Aufsätze",
+    "Finanzierung für die nächste Ausgabe des 'Tagespropheten'",
+    "Geld für ein neues magisches Schachspiel",
+    "Bitte um eine Spende für die St. Mungo-Klinik",
+    "Rückerstattung für die explodierenden Bonbons",
+    "Dein Anteil an der Taxifahrt mit dem Fahrenden Ritter",
+    "Ich brauche Geld für neue Roben von Madam Malkin's",
+    "Sammle für die Restaurierung des Gemeinschaftsraums",
+    "Rückerstattung für die Mondkalb-Dung-Lieferung",
+    "Dein Anteil an den Kosten für die De-Gnomisierung des Gartens",
+    "Geld für ein neues Paar Quidditch-Handschuhe",
+    "Bitte um einen Kredit für eine neue Eule",
+    "Rückerstattung für die Tickets für das Konzert der Schwestern des Schicksals",
+    "Dein Beitrag für die nächste Butterbier-Flatrate-Party",
+    "Ich sammle für die Verteidigung gegen die dunklen Künste-Nachhilfestunden",
+    "Rückerstattung für die Pflege von Seidenschnabel",
+    "Dein Anteil am Kauf der Karte des Rumtreibers",
+    "Geld für eine neue Phiole für Professor Slughorn",
+    "Bitte um einen Zuschuss für die nächste Hogsmeade-Shoppingtour",
+    "Rückerstattung für die Wette gegen Slytherin",
+    "Dein Anteil an der Bestellung von 'Verlängerbaren Ohren'",
+    "Ich brauche Geld für ein neues Buch über magische Geschöpfe",
+    "Sammle für ein Denkmal für die gefallenen Helden",
+    "Rückerstattung für die Reparatur des Gemeinschafts-Kessels",
+    "Dein Anteil an der Bestechung von Argus Filch",
+    "Geld für eine neue Ausgabe von 'Zaubertränke für Fortgeschrittene'",
+    "Bitte um einen Vorschuss für die nächste Süßigkeiten-Lieferung von Honigtopf",
+    "Rückerstattung für die Organisation der Weihnachtsfeier",
+    "Dein Anteil an der Miete für den Raum der Wünsche",
+    "Ich brauche Geld für ein neues Set selbst-mischender Karten",
+    "Sammle für die 'Haltet Hogwarts sauber'-Kampagne",
+    "Rückerstattung für die Heulende-Hütte-Tour",
+    "Dein Anteil am Kauf eines neuen Snitches",
+    "Geld für die Reparatur des kaputten Spiegels",
+    "Bitte um eine Leihgabe für die Teilnahme am Trimagischen Turnier",
+    "Rückerstattung für die Feuerwerkskörper vom 4. Juli",
+    "Dein Anteil an den Kosten für die Verwandlung von Malfoy in ein Frettchen",
+    "Ich brauche Geld für eine neue Kristallkugel",
+    "Sammle für die Renovierung des Quidditch-Feldes",
+    "Rückerstattung für die Anti-Doxy-Spray-Ladung",
+    "Dein Anteil an der Rettungsaktion für Sirius Black",
+    "Geld für ein neues Set Zauberer-Briefmarken",
+    "Bitte um einen Zuschuss für mein Basilisken-Forschungsprojekt",
+    "Rückerstattung für die Miete der fliegenden Schlüssel",
+    "Dein Anteil an der Bezahlung des Trolls im Kerker",
+    "Ich brauche Geld für ein neues Medaillon (nicht das von Slytherin!)",
+    "Sammle für die Wiedereröffnung von 'Weasleys Zauberhafte Zauberscherze'",
+    "Rückerstattung für die Reparatur des fliegenden Ford Anglia",
+    "Dein Anteil an der Bestechung des Ministers für Magie",
+    "Geld für eine neue Ausgabe von 'Die Märchen von Beedle dem Barden'",
+    "Noch offen: Dein Anteil für die Bücher",
+    "Bitte um Rückzahlung für die Kinokarten",
+    "Erinnerung: Die Wette von gestern Abend",
+    "Du bist dran mit der Runde im Pub",
+    "Kosten für die gemeinsame Taxifahrt",
+    "Dein Beitrag zum gemeinsamen Geschenk",
+    "Ich lege das Geld für das Essen aus, bitte zurückzahlen",
+    "Noch offen: Dein Anteil an der Miete",
+    "Rückerstattung für die Einkäufe",
+    "Beteiligung an den Reparaturkosten",
+    "Leihst du mir was bis zum Monatsende?",
+    "Sammelbestellung, dein Anteil bitte",
+    "Könntest du mir für den Kaffee aushelfen?",
+    "Dein Einsatz für die Tipprunde",
+    "Rückzahlung des kleinen Kredits von letzter Woche",
+    "Kostenbeteiligung für das Projekt",
+    "Dein Anteil an der Rechnung für das Abendessen",
+    "Ich sammle Geld für einen wohltätigen Zweck, bist du dabei?",
+    "Bitte um einen kleinen Vorschuss",
+    "Dein Anteil für die Tickets",
+    "Rückerstattung für die Medikamente aus der Apotheke",
+    "Beteiligung an den Spritkosten",
+    "Könntest du mir das geliehene Geld zurückgeben?",
+    "Dein Beitrag für die Partykasse",
+    "Ich brauche Geld für ein neues Ladegerät",
+    "Rückzahlung für die ausgeliehenen 20 Galleonen",
+    "Dein Anteil an den Streaming-Abos für den magischen Spiegel",
+    "Bitte überweise mir deinen Teil der Nebenkosten",
+    "Ich habe die Konzertkarten bezahlt, dein Anteil steht noch aus",
+    "Geld für die Reinigung der Festumhänge",
+    "Dein Beitrag für das Hochzeitsgeschenk",
+    "Rückerstattung für die Hotelbuchung im Tropfenden Kessel",
+    "Kosten für den gemeinsamen Urlaub",
+    "Bitte um deinen Anteil für den Wocheneinkauf in der Winkelgasse",
+    "Ich lege für die Getränke aus",
+    "Dein Teil der Pizza-Bestellung",
+    "Rückzahlung für die Bahntickets des Hogwarts-Express",
+    "Beteiligung an den Kosten für das neue Spiel",
+    "Könntest du mir meinen Anteil für das Taxi schicken?",
+    "Dein Beitrag für die Klassenfahrt",
+    "Ich brauche Geld für die Studiengebühren in Hogwarts",
+    "Rückerstattung für die Kopierkosten der Aufsätze",
+    "Dein Anteil für die Sportvereinsgebühr (Quidditch)",
+    "Bitte um eine kleine Finanzspritze für den Umzug",
+    "Ich habe die Kaution vorgestreckt",
+    "Dein Teil der Maklergebühr",
+    "Rückzahlung für die neuen Möbel",
+    "Kostenbeteiligung für die Renovierung",
+    "Dein Anteil für die Handwerkerrechnung",
+    "Ich brauche Geld für die Autoreparatur (fliegendes Auto)",
+    "Rückerstattung für die Versicherung",
+    "Dein Anteil an der Besen-Steuer",
+    "Bitte um Beteiligung an den Tierarztkosten für Hedwig",
+    "Ich habe das Futter für den Hund (Fang) bezahlt",
+    "Dein Beitrag für das neue Spielzeug der Kinder",
+    "Rückerstattung für die Babysitter-Kosten",
+    "Kosten für den gemeinsamen Ausflug",
+    "Dein Anteil an der Ferienwohnung",
+    "Ich lege für die Mautgebühren aus",
+    "Rückzahlung für die Vignetten",
+    "Beteiligung an den Parkgebühren",
+    "Dein Beitrag für den Grillabend",
+    "Ich habe das Fleisch und die Getränke besorgt",
+    "Rückerstattung für den Kuchen",
+    "Kosten für die Dekoration der Party",
+    "Dein Anteil an der Raummiete",
+    "Ich brauche Geld für die Nachhilfestunden",
+    "Rückzahlung für die Kursgebühren",
+    "Beteiligung an den Materialkosten",
+    "Dein Beitrag für die Exkursion",
+    "Ich habe die Laborgebühren bezahlt",
+    "Rückerstattung für die Fachliteratur",
+    "Kosten für die Softwarelizenz",
+    "Dein Anteil am Server-Hosting",
+    "Ich brauche Geld für die Domain-Registrierung",
+    "Rückzahlung für die Werbekosten",
+    "Beteiligung am Büromaterial",
+    "Dein Beitrag zur Kaffeekasse im Büro",
+    "Ich habe das Mittagessen für alle geholt",
+    "Rückerstattung für die Geschäftsreisekosten",
+    "Kosten für das Team-Event",
+    "Dein Anteil am Abschiedsgeschenk für den Kollegen",
+    "Erinnerung an die Wettgewinne vom Quidditch-Spiel",
+    "Bitte um Rückzahlung des Vorschusses für die Bertie Botts Bohnen",
+    "Kostenbeteiligung für die Reparatur des kaputten Zauberstabs",
+    "Dein Anteil für den Eintritt in die Heulende Hütte",
+    "Ich habe für 'Phantastische Tierwesen' ausgelegt",
+    "Bitte gib mir das Geld für die Kaution von Hagrid zurück",
+    "Dein Beitrag für die DA-Sitzung fehlt noch",
+    "Rückerstattung der Lizenzgebühr für den Federkiel",
+    "Kosten für die Nachhilfe in Verwandlung",
+    "Ich sammle Geld für einen Heuler für Malfoy, dein Anteil?",
+    "Die Karte des Rumtreibers war nicht umsonst, dein Anteil bitte",
+    "Honigtopf-Raubzug: Dein Anteil an der Beute... äh, Rechnung",
+    "Die neuesten Zauberscherze, dein Kostenanteil",
+    "Abo vom Tagespropheten, du bist dran mit Zahlen",
+    "Rückzahlung für die Runde Kürbissaft",
+    "Noch offen: Dein Anteil am neuen Umhang von Madam Malkin's",
+    "Bitte um Rückerstattung für die Zischenden Wissbies",
+    "Kosten für die Pflege des Hippogreifs",
+    "Veritaserum-Beschaffung, dein Anteil",
+    "Leihgebühr für das Denkarium",
+    "Dein Beitrag für das magische Tierfutter",
+    "Reparaturkosten für das fliegende Auto, wir teilen doch, oder?",
+    "Die Rechnung von den Drei Besen ist da",
+    "Gehalt für den Hauself, dein Anteil",
+    "Sammle für eine seltene Alraune, machst du mit?",
+    "Investition in einen portablen Sumpf, dein Anteil?",
+    "Geld für den nächsten Hogsmeade-Ausflug",
+    "Bitte um Beteiligung an den neuen Drachenleder-Handschuhen",
+    "Spende an den Orden des Phönix, bist du dabei?",
+    "Fehlender Betrag für den neuen Satz Zaubertrank-Fläschchen",
+    "Dein Einsatz für das magische Schachspiel",
+    "Erinnerungsmich-Ersatz, Kostenbeteiligung erbeten",
+    "Die Knallbonbons von gestern, dein Anteil",
+    "Bestellung bei Eeylops Eulenkaufhaus, bitte überweisen",
+    "Dein Anteil für den seltenen Zaubertrank-Aufsatz",
+    "Pflegekosten für Krätze, bitte beteiligen",
+    "Mondkalb-Dung-Lieferung, dein Teil der Rechnung",
+    "Lakritz-Zauberstäbe, du bist dran",
+    "Explodierender Kessel, bitte um Beteiligung an den Kosten",
+    "Geburtstagsgeschenk, dein Beitrag steht noch aus",
+    "Würg Riegel, dein Anteil an der Großbestellung",
+    "Verlängerbare Ohren, bitte um Rückerstattung",
+    "Kanarienvogel-Kekse, dein Anteil?",
+    "Dein Beitrag für das peruanische Instant-Finsternispulver",
+    "Nasch-und-Schwänz-Leckereien, bitte um Kostenbeteiligung",
+    "Pickel-Entferner, du wolltest die Hälfte zahlen",
+    "Liebestrank-Experiment, dein Anteil an den Zutaten",
+    "Kotzbomben-Vorrat, bitte um deinen Beitrag",
+    "Essbare Dunkle Male, dein Anteil?",
+    "Tagtraumzauber-Patent, bitte um deine Investition",
+    "Kopf-ab-Hut, dein Anteil am Scherz",
+    "Wunderhexen-Zauber-Set, Kostenbeteiligung",
+    "Scherzartikelladen-Rechnung, dein Teil",
+    "Fressanfall-Fudge, bitte um Rückzahlung",
+    "Honigtopf-Einkauf, dein Anteil fehlt noch",
+    "Rechnung von Potage's Kesselladen",
+    "Dein Anteil am Einkauf bei Flourish & Blotts",
+    "Feder von Scrivenshaft's, bitte erstatten",
+    "Zonko's Scherzartikelladen, dein Beitrag",
+    "Madam Puddifoot's Teesalon, du warst eingeladen, aber...",
+    "Eulenleckerlis, dein Anteil",
+    "Kosten für den Tagespropheten",
+    "Eis von Florean Fortescue, bitte zurückzahlen",
+    "Besuch im Tropfenden Kessel, dein Deckel",
+    "Gringotts Bearbeitungsgebühr, bitte beteiligen",
+    "Besenpolitur-Set, dein Anteil",
+    "Tickets für das Chudley Cannons Spiel",
+    "Dein Wetteinsatz für das Gryffindor vs. Slytherin Spiel",
+    "Quidditch-Handschuhe, dein Anteil",
+    "Reparatur des Klatschers, Kostenbeteiligung",
+    "Poster von Viktor Krum, du wolltest es auch",
+    "Team-Beitrag für neue Umhänge",
+    "Quidditch-Almanach, dein Anteil",
+    "Heiltrank für nach dem Training, bitte erstatten",
+    "Ticket für die Quidditch-Weltmeisterschaft",
+    "Kniesel-Futter, dein Beitrag",
+    "Halsband für Fang, du wolltest es mitschenken",
+    "Drachenfutter, streng geheime Kostenbeteiligung",
+    "Decke für Hedwig's Käfig, dein Anteil",
+    "Buch über die Pflege von Hippogreifen, bitte erstatten",
+    "Bezahlung für die De-Gnomisierung des Gartens",
+    "Niffler-Futter, bitte um deinen Beitrag",
+    "Bowtruckle-Zweige, dein Anteil",
+    "Terrarium für einen Schrumpffüßler, Kostenbeteiligung",
+    "Salamander-Futter, dein Beitrag",
+    "Nachhilfe bei Slughorn, bitte um deinen Anteil",
+    "Neuer Satz Phiolen, Kostenbeteiligung",
+    "Pergament und Tinte, dein Anteil",
+    "Ausgabe von 'Verteidigung für Fortgeschrittene'",
+    "Beitrag für den Duellierclub",
+    "Gebühr für die Apparierprüfung",
+    "Neues Teleskop für Astronomie, dein Anteil",
+    "Kräuterkunde-Handschuhe, bitte erstatten",
+    "Exemplar von 'Geschichte der Zauberei'",
+    "Versuch, Hauspunkte zu kaufen, dein Einsatz?",
+    "Schweigegeld für Peeves, dein Anteil",
+    "Passwort für die fette Dame, dein Beitrag zur Bestechung",
+    "Beitrag zum 'Wir-hassen-Umbridge'-Fond",
+    "Portschlüssel nach Hause, dein Anteil",
+    "Neues Paar Socken für Dobby, Spende erbeten",
+    "Bibliotheksgebühr für überfälliges Buch",
+    "Magisches Amulett gegen Nargel, dein Anteil",
+    "Flasche Felix Felicis, bitte um deinen (großen) Anteil",
+    "Neuer Zeitumkehrer, Kostenbeteiligung",
+    "Gobstone-Set, dein Anteil",
+    "Zauberer-Schach-Wetteinsatz",
+    "Ausgabe des Klitterers, bitte erstatten",
+    "Finanzierung für die Suche nach dem Schnarchkackler",
+    "Geschenk für Professor McGonagall, dein Beitrag",
+    "Heuler an meine Eltern, Portokosten",
+    "Bestechung für einen Slytherin, dein Anteil",
+    "Beruhigungstrank für die ZAGs, Kostenbeteiligung",
+    "Entfernung eines Flederwicht-Fluchs, dein Anteil",
+    "Zauber, um Socken zu sortieren, dein Beitrag",
+    "Abonnement für 'Hexenwoche', bitte erstatten",
+    "Selbst-umrührender Kessel, dein Anteil",
+    "Set Explodierender Snap, Kostenbeteiligung",
+    "Spende für St. Mungo's, bist du dabei?",
+    "Rückzahlung einer verlorenen Wette",
+    "Geld für den nächsten Streich, dein Beitrag",
+    "Neuer Tarnumhang, bitte um Beteiligung",
+    "Seltenes Autogramm von Lockhart, dein Anteil",
+    "Magischer Kalender, Kostenbeteiligung",
+    "Muggel-Artefakt für Mr. Weasley, dein Beitrag",
+    "Kiste mit heulenden Süßigkeiten, dein Anteil",
+    "Zauber, der die Hausaufgaben macht, Investition?",
+    "Flasche Odgen's Old Firewhisky, dein Anteil",
+    "Päckchen Droobles Bester Blaskaugummi",
+    "Geschenk für den Hausgeist, dein Beitrag",
+    "Reparatur eines zerbrochenen Erinner-michs",
+    "Einladung zum Weihnachtsball, Kosten für dein +1",
+    "Geld für einen neuen Familiar, dein Anteil",
+    "Beitrag für die Party im Gemeinschaftsraum",
+    "Magisches Vorhängeschloss für mein Tagebuch",
+    "Schachtel Säure-Knaller, dein Anteil",
+    "Zauber, der Gemüse wie Süßigkeiten schmecken lässt",
+    "Karte für das Konzert der Schwestern des Schicksals",
+    "Set selbststrickender Nadeln, dein Anteil",
+    "Verzauberte Schneekugel von Hogsmeade",
+    "Geld für den Ausflug in die Winkelgasse",
+    "Päckchen singender Lebkuchenmänner",
+    "Amulett zum Schutz vor Werwölfen",
+    "Verzauberter Kompass, der zum Kühlschrank führt",
+    "Kissen, das einem Schlaflieder vorsingt",
+    "Magisches Pflaster, das Wunden sofort heilt",
+    "Zauber, der verlorene Gegenstände findet",
+    "Set unsichtbarer Tinte, dein Anteil",
+    "Verzaubertes Lesezeichen, das die Geschichte vorliest",
+    "Magischer Federkiel, der nicht kleckst",
+    "Set schwebender Kerzen für mein Zimmer",
+    "Flasche Elfenwein, dein Anteil an der Rechnung",
+    "Erinnerung: Du wolltest mir Geld leihen",
+    "Vorschuss für unser gemeinsames Projekt",
+    "Noch offen: Dein Anteil an der letzten Bestellung",
+    "Bitte um Rückzahlung des Darlehens",
+    "Gemeinschaftskasse ist leer, bitte auffüllen",
+    "Dein Beitrag für die Miete steht noch aus",
+    "Stromrechnung, dein Anteil bitte",
+    "Internetrechnung, bitte überweisen",
+    "Lebensmitteleinkauf, dein Anteil",
+    "Getränke von gestern Abend",
+    "Taxifahrt, bitte um deinen Anteil",
+    "Geburtstagsgeschenk für einen Freund",
+    "Hochzeitsgeschenk, dein Beitrag",
+    "Konzertkarten, ich hab ausgelegt",
+    "Urlaubsplanung, Anzahlung erforderlich",
+    "Flugtickets, bitte um deinen Anteil",
+    "Hotelbuchung, dein Beitrag",
+    "Mietwagenkosten, bitte beteiligen",
+    "Spritgeld für die letzte Fahrt",
+    "Reparaturkosten, dein Anteil",
+    "Versicherungsbeitrag, bitte überweisen",
+    "Tierarztkosten, dein Anteil für den Hippogreif",
+    "Medikamente, bitte um Rückerstattung",
+    "Abendessen von letzter Woche",
+    "Kinotickets, du bist dran",
+    "Streaming-Dienst, dein monatlicher Beitrag",
+    "Vereinsbeitrag, bitte überweisen",
+    "Kursgebühr, dein Anteil",
+    "Materialkosten für den Kurs",
+    "Nachhilfestunden, bitte bezahlen",
+    "Studiengebühren, bitte um Unterstützung",
+    "Kaution für die Wohnung",
+    "Renovierungskosten, dein Anteil",
+    "Neue Möbel, bitte beteiligen",
+    "Handwerkerrechnung, dein Anteil",
+    "Gartenbedarf, bitte um Kostenbeteiligung",
+];
+
 
 const SendMoneyView: React.FC<{
     currentUser: User;
@@ -999,7 +1408,7 @@ const RequestMoneyView: React.FC<{
     const [dismissedRejectedIds, setDismissedRejectedIds] = useState<string[]>([]);
 
     useEffect(() => {
-        const randomPlaceholder = notePlaceholders[Math.floor(Math.random() * notePlaceholders.length)];
+        const randomPlaceholder = requestNotePlaceholders[Math.floor(Math.random() * requestNotePlaceholders.length)];
         setNotePlaceholder(`z.B. ${randomPlaceholder}`);
     }, []);
 
@@ -1462,6 +1871,20 @@ const AdminView: React.FC<{
             {label}
         </button>
     );
+    
+    const ORIGINAL_KING_EMAIL = 'luca.lombino@icloud.com';
+    const KINGSLEY_EMAIL = 'da-hauspokal-orga@outlook.com';
+    const TEST_LUSA_EMAIL = 'lucagauntda7@gmail.com';
+
+    const canCurrentUserDeleteUser = (targetUser: User) => {
+        if (!isKing) return false;
+        if (targetUser.id === currentUser.id) return false; // Can't delete self
+        if (currentUser.email === KINGSLEY_EMAIL && (targetUser.email === ORIGINAL_KING_EMAIL || targetUser.email === TEST_LUSA_EMAIL)) {
+            return false; // Kingsley can't delete Original King or Test-Lusa
+        }
+        return true;
+    };
+
 
     return (
         <div className="space-y-6">
@@ -1471,8 +1894,7 @@ const AdminView: React.FC<{
                     onClose={() => setEditingUser(null)}
                     onSave={onUpdateUser}
                     onDelete={onSoftDeleteUser}
-                    isEditingSelf={editingUser.id === currentUser.id}
-                    isKing={isKing}
+                    currentUser={currentUser}
                 />
             )}
             <h2 className="text-3xl sm:text-4xl font-bold">Admin Panel</h2>
@@ -1499,34 +1921,37 @@ const AdminView: React.FC<{
                 </div>
                 <div className="space-y-3">
                     {visibleUsers.length > 0 ? (
-                        visibleUsers.map(user => (
-                            <div key={user.id} className={`flex items-center justify-between p-3 rounded-2xl ${user.is_deleted ? 'bg-red-500/10' : 'bg-black/20'}`}>
-                                <div>
-                                    <p className="font-semibold">{user.name} {user.id === currentUser.id && '(Du)'}</p>
-                                    <p className="text-sm opacity-70">
-                                        {user.balance.toLocaleString('de-DE')} K - <span className={`font-semibold ${houseTextColors[user.house]}`}>{user.house}</span>
-                                    </p>
-                                </div>
-                                <div className="flex gap-2">
-                                   {user.is_deleted ? (
-                                        <button onClick={() => onRestoreUser(user.id)} className="p-2 hover:bg-white/20 rounded-full transition-colors" aria-label="Nutzer wiederherstellen">
-                                            <RestoreIcon />
-                                        </button>
-                                   ) : (
-                                    <>
-                                        <button onClick={() => setEditingUser(user)} className="p-2 hover:bg-white/20 rounded-full transition-colors" aria-label="Nutzer bearbeiten">
-                                            <UserEditIcon className="w-5 h-5" />
-                                        </button>
-                                         {user.id !== currentUser.id && (
-                                            <button onClick={() => onSoftDeleteUser(user.id)} className="p-2 hover:bg-white/20 rounded-full transition-colors" aria-label="Nutzer löschen">
-                                                <TrashIcon className="w-5 h-5" />
+                        visibleUsers.map(user => {
+                            const { galleons, sickles, knuts } = knutsToCanonical(user.balance);
+                            return (
+                                <div key={user.id} className={`flex items-center justify-between p-3 rounded-2xl ${user.is_deleted ? 'bg-red-500/10' : 'bg-black/20'}`}>
+                                    <div>
+                                        <p className="font-semibold">{user.name} {user.id === currentUser.id && '(Du)'}</p>
+                                        <p className="text-sm opacity-70">
+                                            {galleons.toLocaleString('de-DE')} G, {sickles.toLocaleString('de-DE')} S, {knuts.toLocaleString('de-DE')} K - <span className={`font-semibold ${houseTextColors[user.house]}`}>{user.house}</span>
+                                        </p>
+                                    </div>
+                                    <div className="flex gap-2">
+                                       {user.is_deleted ? (
+                                            <button onClick={() => onRestoreUser(user.id)} className="p-2 hover:bg-white/20 rounded-full transition-colors" aria-label="Nutzer wiederherstellen">
+                                                <RestoreIcon />
                                             </button>
-                                         )}
-                                    </>
-                                   )}
+                                       ) : (
+                                        <>
+                                            <button onClick={() => setEditingUser(user)} className="p-2 hover:bg-white/20 rounded-full transition-colors" aria-label="Nutzer bearbeiten">
+                                                <UserEditIcon className="w-5 h-5" />
+                                            </button>
+                                             {canCurrentUserDeleteUser(user) && (
+                                                <button onClick={() => onSoftDeleteUser(user.id)} className="p-2 hover:bg-white/20 rounded-full transition-colors" aria-label="Nutzer löschen">
+                                                    <TrashIcon className="w-5 h-5" />
+                                                </button>
+                                             )}
+                                        </>
+                                       )}
+                                    </div>
                                 </div>
-                            </div>
-                        ))
+                            );
+                        })
                     ) : (
                         <p className="text-center opacity-70 p-4">Keine passenden Nutzer gefunden.</p>
                     )}
@@ -1628,42 +2053,139 @@ const AdminView: React.FC<{
                                     : {`${canonicalAmount.galleons} G, ${canonicalAmount.sickles} S, ${canonicalAmount.knuts} K`}
                                 </p>
                                 <p className="opacity-60 text-xs mt-1">{new Date(tx.created_at).toLocaleString()}</p>
-                                {userNote && (
-                                    <p className="text-sm opacity-80 mt-1 pt-1 border-t border-white/10">
-                                        {userNote}
-                                    </p>
-                                )}
+                                {userNote && <p className="text-white/80 mt-1 pt-1 border-t border-white/10 text-xs"><em>{userNote}</em></p>}
                             </div>
                         );
-                    }) : <p className="opacity-70 text-center p-4">Keine passenden Transaktionen gefunden.</p>}
+                    }) : (
+                        <p className="text-center opacity-70 p-4">Keine passenden Transaktionen gefunden.</p>
+                    )}
                 </div>
             </div>
         </div>
     );
 };
 
+const ProfileView: React.FC<{
+  currentUser: User;
+  onUpdateProfile: (updates: { name?: string; house?: House; }) => Promise<void>;
+  onUpdatePassword: (password: string) => Promise<void>;
+}> = ({ currentUser, onUpdateProfile, onUpdatePassword }) => {
+  const [name, setName] = useState(currentUser.name);
+  const [house, setHouse] = useState(currentUser.house);
+  
+  const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
 
-const NavButton: React.FC<{
-  label: string;
-  icon: React.ReactNode;
-  isActive: boolean;
-  onClick: () => void;
-}> = ({ label, icon, isActive, onClick }) => (
-  <button
-    onClick={onClick}
-    className={`flex flex-col items-center justify-center w-24 h-16 rounded-2xl transition-all duration-300 ${
-      isActive ? 'bg-white/10' : 'hover:bg-white/5'
-    }`}
-    aria-selected={isActive}
-  >
-    <div className={`transition-transform duration-300 ${isActive ? 'transform -translate-y-1' : ''}`}>
-        {icon}
+  const [profileError, setProfileError] = useState('');
+  const [profileSuccess, setProfileSuccess] = useState('');
+  const [passwordError, setPasswordError] = useState('');
+  const [passwordSuccess, setPasswordSuccess] = useState('');
+
+  const hasProfileChanges = name !== currentUser.name || house !== currentUser.house;
+
+  const handleProfileSave = async () => {
+    setProfileError('');
+    setProfileSuccess('');
+    if (!name.trim()) {
+      setProfileError('Der Name darf nicht leer sein.');
+      return;
+    }
+    try {
+      await onUpdateProfile({
+        name: name.trim(),
+        house,
+      });
+      setProfileSuccess('Dein Profil wurde erfolgreich aktualisiert.');
+    } catch (error: any) {
+      setProfileError(error.message || 'Aktualisierung fehlgeschlagen.');
+    }
+  };
+
+  const handlePasswordUpdate = async () => {
+    setPasswordError('');
+    setPasswordSuccess('');
+    if (password.length < 6) {
+      setPasswordError('Das Passwort muss mindestens 6 Zeichen lang sein.');
+      return;
+    }
+    if (password !== confirmPassword) {
+      setPasswordError('Die Passwörter stimmen nicht überein.');
+      return;
+    }
+    try {
+      await onUpdatePassword(password);
+      setPasswordSuccess('Dein Passwort wurde erfolgreich geändert.');
+      setPassword('');
+      setConfirmPassword('');
+    } catch (error: any) {
+      setPasswordError(error.message || 'Änderung des Passworts fehlgeschlagen.');
+    }
+  };
+  
+  const houseDetails = {
+    [House.Gryffindor]: { color: "border-red-500", label: "Gryffindor" },
+    [House.Slytherin]: { color: "border-green-500", label: "Slytherin" },
+    [House.Hufflepuff]: { color: "border-yellow-400", label: "Hufflepuff" },
+    [House.Ravenclaw]: { color: "border-blue-500", label: "Ravenclaw" },
+  };
+
+  const commonInputStyles = "w-full p-4 bg-[#FFFFFF21] border border-[#FFFFFF59] rounded-2xl focus:ring-2 focus:ring-white focus:outline-none transition-shadow";
+
+  return (
+    <div className="space-y-8">
+      {/* Profile Details */}
+      <div className="space-y-6">
+        <h2 className="text-3xl sm:text-4xl font-bold">Profil bearbeiten</h2>
+        <div className="bg-[#FFFFFF21] rounded-3xl p-6 sm:p-8 border border-[#FFFFFF59] space-y-6">
+          <div>
+            <label htmlFor="profile-name" className="block mb-2 text-sm font-medium opacity-80">Name</label>
+            <input id="profile-name" type="text" value={name} onChange={e => setName(e.target.value)} className={commonInputStyles} />
+          </div>
+          <div>
+            <label className="block mb-2 text-sm font-medium opacity-80">Haus</label>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+              {Object.values(House).map((h) => (
+                <button type="button" key={h} onClick={() => setHouse(h)} className={`p-4 rounded-2xl border-2 transition-all duration-200 text-center font-bold ${house === h ? `${houseDetails[h].color} bg-white/10` : 'border-transparent bg-[#FFFFFF21] hover:bg-white/10'}`}>
+                    {houseDetails[h].label}
+                </button>
+              ))}
+            </div>
+          </div>
+           {profileError && <p className="text-red-400 text-sm text-center">{profileError}</p>}
+           {profileSuccess && <p className="text-green-400 text-sm text-center">{profileSuccess}</p>}
+          <button onClick={handleProfileSave} disabled={!hasProfileChanges} className="w-full text-black bg-white hover:bg-gray-200 font-bold rounded-full text-base h-[3.75rem] transition-colors disabled:bg-gray-400 disabled:cursor-not-allowed">
+            Profil speichern
+          </button>
+        </div>
+      </div>
+      
+      {/* Security */}
+      <div className="space-y-6">
+        <h2 className="text-3xl sm:text-4xl font-bold">Sicherheit</h2>
+        <div className="bg-[#FFFFFF21] rounded-3xl p-6 sm:p-8 border border-[#FFFFFF59] space-y-6">
+          <div>
+            <label className="block mb-2 text-sm font-medium opacity-80">E-Mail</label>
+            <p className="p-4 bg-black/20 border border-white/20 rounded-2xl text-white/70">{currentUser.email}</p>
+          </div>
+          <div>
+            <label htmlFor="new-password"className="block mb-2 text-sm font-medium opacity-80">Neues Passwort</label>
+            <input id="new-password" type="password" value={password} onChange={e => setPassword(e.target.value)} className={commonInputStyles} placeholder="Mindestens 6 Zeichen" />
+          </div>
+          <div>
+            <label htmlFor="confirm-password"className="block mb-2 text-sm font-medium opacity-80">Neues Passwort bestätigen</label>
+            <input id="confirm-password" type="password" value={confirmPassword} onChange={e => setConfirmPassword(e.target.value)} className={commonInputStyles} placeholder="Passwort wiederholen" />
+          </div>
+          {passwordError && <p className="text-red-400 text-sm text-center">{passwordError}</p>}
+          {passwordSuccess && <p className="text-green-400 text-sm text-center">{passwordSuccess}</p>}
+          <button onClick={handlePasswordUpdate} disabled={!password || !confirmPassword} className="w-full text-black bg-white hover:bg-gray-200 font-bold rounded-full text-base h-[3.75rem] transition-colors disabled:bg-gray-400 disabled:cursor-not-allowed">
+            Passwort ändern
+          </button>
+        </div>
+      </div>
     </div>
-    <span className={`text-xs mt-1 ${isActive ? 'font-bold' : ''}`}>
-      {label}
-    </span>
-  </button>
-);
+  );
+};
+
 
 const Dashboard: React.FC<DashboardProps> = ({
   currentUser,
@@ -1679,82 +2201,53 @@ const Dashboard: React.FC<DashboardProps> = ({
   onCreateRequest,
   onAcceptRequest,
   onRejectRequest,
+  onUpdateProfile,
+  onUpdatePassword
 }) => {
-  const [currentView, setCurrentView] = useState<'send' | 'history' | 'admin' | 'request'>('send');
-  const [displayBalance, setDisplayBalance] = useState<Currency>(() => knutsToCanonical(currentUser.balance));
-  const prevTransactionsRef = useRef(transactions);
-  const prevBalanceRef = useRef(currentUser.balance);
+  const [activeTab, setActiveTab] = useState('send');
 
-  useEffect(() => {
-    const oldTxIds = new Set(prevTransactionsRef.current.map(t => t.id));
-    const newTransactions = transactions.filter(tx => !oldTxIds.has(tx.id));
-    const newIncomingTx = newTransactions.find(tx => tx.receiver_id === currentUser.id);
+  const { galleons, sickles, knuts } = knutsToCanonical(currentUser.balance);
 
-    if (newIncomingTx && newIncomingTx.note?.includes('|~|')) {
-        const parts = newIncomingTx.note.split('|~|');
-        if (parts.length === 2) {
-            try {
-                const sentAs = JSON.parse(parts[1]);
-                if (typeof sentAs.g === 'number' && typeof sentAs.s === 'number' && typeof sentAs.k === 'number') {
-                    setDisplayBalance(prev => ({
-                        galleons: prev.galleons + sentAs.g,
-                        sickles: prev.sickles + sentAs.s,
-                        knuts: prev.knuts + sentAs.k,
-                    }));
-                }
-            } catch (e) {
-                 setDisplayBalance(knutsToCanonical(currentUser.balance));
-            }
-        }
-    } else if (currentUser.balance !== prevBalanceRef.current) {
-        // Resync if balance changed for other reasons (e.g., sending money)
-        setDisplayBalance(knutsToCanonical(currentUser.balance));
-    }
-
-    prevTransactionsRef.current = transactions;
-    prevBalanceRef.current = currentUser.balance;
-  }, [transactions, currentUser.balance, currentUser.id]);
-
-  useEffect(() => {
-    // Reset display balance if user logs out and a new user logs in
-    setDisplayBalance(knutsToCanonical(currentUser.balance));
-  }, [currentUser.id]);
-
-
-  const needsConversion = displayBalance.sickles >= 17 || displayBalance.knuts >= 29;
-
-  const handleConvert = () => {
-    setDisplayBalance(knutsToCanonical(currentUser.balance));
-  };
+  const TabButton: React.FC<{ tabName: string; label: string; icon: React.ReactNode }> = ({ tabName, label, icon }) => (
+    <button
+      onClick={() => setActiveTab(tabName)}
+      className={`flex-1 flex flex-col sm:flex-row items-center justify-center gap-2 py-3 px-4 rounded-full text-sm sm:text-base font-bold transition-colors duration-300 ${activeTab === tabName ? 'bg-white text-black' : 'bg-transparent text-white/80 hover:bg-white/10'}`}
+    >
+      {icon}
+      {label}
+    </button>
+  );
 
   return (
-    <div className="pt-28 pb-28 md:pt-32 md:pb-32 animate-fadeIn">
-      <div className="container mx-auto px-4">
-        <div className="text-center mb-8">
-            <div className="relative inline-block group">
-                <p className="text-xl opacity-80">Dein Kontostand</p>
-                <div className="flex items-center justify-center gap-2 sm:gap-4">
-                    <p className="text-4xl sm:text-5xl font-bold tracking-tighter">
-                        {displayBalance.galleons.toLocaleString('de-DE')} <span className="text-3xl opacity-70">G</span>, {displayBalance.sickles} <span className="text-3xl opacity-70">S</span>, {displayBalance.knuts} <span className="text-3xl opacity-70">K</span>
-                    </p>
-                    {needsConversion && (
-                        <button onClick={handleConvert} className="bg-white text-black rounded-full px-4 py-1 text-sm font-bold transition-transform hover:scale-105 active:scale-95">
-                            Umwandeln
-                        </button>
-                    )}
-                </div>
+    <div className="container mx-auto p-4 pt-28 md:pt-32 pb-24">
+      <div className="max-w-3xl mx-auto">
+        <div className="bg-[#FFFFFF21] rounded-3xl p-6 sm:p-8 mb-8 border border-[#FFFFFF59] text-center">
+            <p className="text-sm font-semibold uppercase opacity-70 tracking-widest">Kontostand</p>
+            <div className="my-2 text-4xl sm:text-5xl font-extrabold tracking-tighter">
+                <span>{galleons.toLocaleString('de-DE')}</span><span className="text-3xl sm:text-4xl opacity-70 font-bold"> G</span>{' '}
+                <span>{sickles.toLocaleString('de-DE')}</span><span className="text-3xl sm:text-4xl opacity-70 font-bold"> S</span>{' '}
+                <span>{knuts.toLocaleString('de-DE')}</span><span className="text-3xl sm:text-4xl opacity-70 font-bold"> K</span>
             </div>
+            <p className="text-xs opacity-50">entspricht {currentUser.balance.toLocaleString('de-DE')} Knuts</p>
         </div>
 
-        <div className="max-w-2xl mx-auto">
-            {currentView === 'send' && (
+        <div className="bg-[#FFFFFF21] rounded-full p-1.5 flex gap-1.5 border border-[#FFFFFF59] mb-8">
+            <TabButton tabName="send" label="Senden" icon={<SendIcon />} />
+            <TabButton tabName="request" label="Anfordern" icon={<BanknotesIcon />} />
+            <TabButton tabName="history" label="Verlauf" icon={<HistoryIcon />} />
+            <TabButton tabName="profile" label="Profil" icon={<UserIcon />} />
+            {isKing && <TabButton tabName="admin" label="Admin" icon={<AdminIcon />} />}
+        </div>
+        
+        <div className="animate-fadeIn">
+            {activeTab === 'send' && (
                 <SendMoneyView
                     currentUser={currentUser}
                     users={users}
                     onSendMoney={onSendMoney}
                 />
             )}
-            {currentView === 'request' && (
+            {activeTab === 'request' && (
                 <RequestMoneyView
                     currentUser={currentUser}
                     users={users}
@@ -1764,8 +2257,20 @@ const Dashboard: React.FC<DashboardProps> = ({
                     onRejectRequest={onRejectRequest}
                 />
             )}
-            {currentView === 'history' && <HistoryView transactions={transactions} currentUserId={currentUser.id} />}
-            {currentView === 'admin' && isKing && globalTransactions && (
+            {activeTab === 'history' && (
+                <HistoryView
+                    transactions={transactions}
+                    currentUserId={currentUser.id}
+                />
+            )}
+            {activeTab === 'profile' && (
+                <ProfileView
+                  currentUser={currentUser}
+                  onUpdateProfile={onUpdateProfile}
+                  onUpdatePassword={onUpdatePassword}
+                />
+            )}
+            {activeTab === 'admin' && isKing && globalTransactions && (
                 <AdminView
                     users={users}
                     transactions={globalTransactions}
@@ -1778,37 +2283,6 @@ const Dashboard: React.FC<DashboardProps> = ({
             )}
         </div>
       </div>
-
-      <nav className="fixed bottom-0 left-0 right-0 bg-[#1e1e1e] border-t border-[#FFFFFF59] p-2">
-        <div className="container mx-auto flex justify-around">
-          <NavButton
-            label="Senden"
-            icon={<SendIcon />}
-            isActive={currentView === 'send'}
-            onClick={() => setCurrentView('send')}
-          />
-          <NavButton
-            label="Anfordern"
-            icon={<RequestIcon className="w-6 h-6" />}
-            isActive={currentView === 'request'}
-            onClick={() => setCurrentView('request')}
-          />
-          <NavButton
-            label="Verlauf"
-            icon={<HistoryIcon />}
-            isActive={currentView === 'history'}
-            onClick={() => setCurrentView('history')}
-          />
-          {isKing && (
-            <NavButton
-              label="Admin"
-              icon={<CrownIcon />}
-              isActive={currentView === 'admin'}
-              onClick={() => setCurrentView('admin')}
-            />
-          )}
-        </div>
-      </nav>
     </div>
   );
 };
