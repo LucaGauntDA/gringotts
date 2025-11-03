@@ -6,10 +6,24 @@
   <title>Gringotts Digital Bank</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <style>
-    @import url('https://fonts.googleapis.com/css2?family=Lato:wght@400;700;900&display=swap');
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;900&display=swap');
     @import url('https://fonts.googleapis.com/css2?family=Aboreto&family=Bangers&family=Lato:wght@400;700;900&family=Lobster&family=Montserrat:wght@700&family=Roboto+Slab:wght@700&display=swap');
     body {
-      font-family: 'Lato', sans-serif;
+      font-family: 'Inter', sans-serif;
+    }
+    /* Add a subtle scrollbar style */
+    ::-webkit-scrollbar {
+      width: 8px;
+    }
+    ::-webkit-scrollbar-track {
+      background: #121212;
+    }
+    ::-webkit-scrollbar-thumb {
+      background: rgba(255, 255, 255, 0.2);
+      border-radius: 4px;
+    }
+    ::-webkit-scrollbar-thumb:hover {
+      background: rgba(255, 255, 255, 0.3);
     }
   </style>
 <script type="importmap">
@@ -27,6 +41,7 @@
       theme: {
         extend: {
           fontFamily: {
+            sans: ['Inter', 'sans-serif'],
             aboreto: ['Aboreto', 'cursive'],
             'roboto-slab': ['"Roboto Slab"', 'serif'],
             montserrat: ['Montserrat', 'sans-serif'],
@@ -35,8 +50,8 @@
           },
           keyframes: {
             fadeIn: {
-              '0%': { opacity: '0' },
-              '100%': { opacity: '1' },
+              '0%': { opacity: '0', transform: 'translateY(10px)' },
+              '100%': { opacity: '1', transform: 'translateY(0)' },
             },
           },
           animation: {

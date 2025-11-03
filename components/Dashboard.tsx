@@ -1,8 +1,11 @@
 import React, { useState, useEffect, useRef } from 'react';
 import type { User, Transaction, Currency, MoneyRequest } from '../types';
 import { House } from '../types';
-import { SendIcon, HistoryIcon, AdminIcon, UsersIcon, TrashIcon, RestoreIcon, UserEditIcon, UserIcon, FilterIcon, BanknotesIcon, CheckIcon, XIcon } from './icons';
-import { currencyToKnuts, knutsToCanonical } from '../utils';
+import { 
+    SendIcon, HistoryIcon, AdminIcon, UserIcon, BanknotesIcon, // Outline
+    TrashIcon, RestoreIcon, UserEditIcon, FilterIcon, CheckIcon, XIcon, InfoIcon, XMarkIcon, CrownIcon
+} from './icons';
+import { currencyToKnuts, knutsToCanonical, GALLEON_IN_KNUTS, SICKLE_IN_KNUTS, GALLEON_IN_SICKLES } from '../utils';
 
 const houseTextColors: { [key: string]: string } = {
   [House.Gryffindor]: 'text-red-400',
@@ -11,6 +14,187 @@ const houseTextColors: { [key: string]: string } = {
   [House.Slytherin]: 'text-green-400',
 };
 
+const GALLEON_IN_GBP = 5;
+
+const createSearchableTransactionString = (tx: Transaction): string => {
+    const senderName = tx.sender?.name?.toLowerCase() || '';
+    const receiverName = tx.receiver?.name?.toLowerCase() || '';
+    
+    let userNote = tx.note || '';
+    if (userNote.includes('|~|')) {
+        userNote = userNote.split('|~|')[0];
+    }
+    userNote = userNote.toLowerCase();
+
+    const date = new Date(tx.created_at).toLocaleString('de-DE', {
+        year: 'numeric', month: '2-digit', day: '2-digit',
+        hour: '2-digit', minute: '2-digit', second: '2-digit'
+    }).replace(',', ''); // e.g., "25.07.2024 10:30:00"
+
+    const canonical = knutsToCanonical(tx.amount);
+    const amountStr = `${canonical.galleons}g ${canonical.sickles}s ${canonical.knuts}k ${tx.amount} galleonen sickel knuts`;
+    
+    const isAdminChange = tx.note?.startsWith('ADMIN_BALANCE_CHANGE::');
+    let adminSearchString = '';
+    if (isAdminChange) {
+        let changeAmount = 0;
+        const parts = tx.note.split('::');
+        if (parts.length >= 5) {
+            const oldBalanceInKnuts = parseInt(parts[3], 10);
+            const newBalanceInKnuts = parseInt(parts[4], 10);
+            if (!isNaN(oldBalanceInKnuts) && !isNaN(newBalanceInKnuts)) {
+               changeAmount = newBalanceInKnuts - oldBalanceInKnuts;
+            }
+        }
+        
+        const canonicalChange = knutsToCanonical(Math.abs(changeAmount));
+        const amountChangeStr = `${canonicalChange.galleons}g ${canonicalChange.sickles}s ${canonicalChange.knuts}k ${Math.abs(changeAmount)}`;
+        adminSearchString = `admin korrektur anpassung ${senderName} ${receiverName} ${amountChangeStr}`;
+    }
+    
+    return [senderName, receiverName, userNote, date, amountStr, adminSearchString].join(' ');
+};
+
+const CurrencyConverterModal: React.FC<{ onClose: () => void }> = ({ onClose }) => {
+    const [galleons, setGalleons] = useState('');
+    const [sickles, setSickles] = useState('');
+    const [knuts, setKnuts] = useState('');
+    const [euros, setEuros] = useState('');
+    
+    const [gbpToEurRate, setGbpToEurRate] = useState<number | null>(null);
+    const [rateLoading, setRateLoading] = useState(true);
+    const [rateError, setRateError] = useState<string | null>(null);
+
+    useEffect(() => {
+        const fetchRate = async () => {
+            try {
+                setRateLoading(true);
+                setRateError(null);
+                // Using a simple, no-key API for exchange rates
+                const response = await fetch('https://api.frankfurter.app/latest?from=GBP&to=EUR');
+                if (!response.ok) {
+                    throw new Error('Kurs konnte nicht geladen werden.');
+                }
+                const data = await response.json();
+                const rate = data.rates?.EUR;
+                if (!rate) {
+                    throw new Error('Ungültige API-Antwort.');
+                }
+                setGbpToEurRate(rate);
+            } catch (error: any) {
+                console.error("Failed to fetch exchange rate:", error);
+                setRateError(error.message);
+                // Fallback to a static rate if the API fails
+                setGbpToEurRate(1.18); // A reasonable fallback
+            } finally {
+                setRateLoading(false);
+            }
+        };
+
+        fetchRate();
+    }, []);
+
+    const galleonToEur = gbpToEurRate ? GALLEON_IN_GBP * gbpToEurRate : 0;
+
+    const inputKnuts = currencyToKnuts({
+        galleons: parseInt(galleons) || 0,
+        sickles: parseInt(sickles) || 0,
+        knuts: parseInt(knuts) || 0,
+    });
+
+    const euroValueFromWizarding = galleonToEur > 0 ? (inputKnuts / GALLEON_IN_KNUTS) * galleonToEur : 0;
+    
+    const euroInput = parseFloat(euros) || 0;
+    const knutsFromEuros = galleonToEur > 0 ? Math.round((euroInput / galleonToEur) * GALLEON_IN_KNUTS) : 0;
+    const canonicalFromEuros = knutsToCanonical(knutsFromEuros);
+
+    const formatNumber = (num: number) => {
+        return new Intl.NumberFormat('de-DE', {
+            minimumFractionDigits: 2,
+            maximumFractionDigits: 2,
+        }).format(num);
+    }
+
+    const commonInputStyles = "w-full p-3 bg-white/5 border border-white/20 rounded-xl focus:ring-2 focus:ring-white/50 focus:bg-white/10 focus:outline-none transition-all text-base";
+
+    return (
+        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4 animate-fadeIn" onClick={onClose}>
+            <div className="bg-[#1c1c1c]/80 backdrop-blur-2xl rounded-3xl p-6 sm:p-8 border border-white/20 max-w-lg w-full relative max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+                <button onClick={onClose} className="absolute top-4 right-4 text-white/60 hover:text-white transition-colors" aria-label="Schließen">
+                    <XMarkIcon className="w-7 h-7" />
+                </button>
+                <div className="space-y-6">
+                    <h3 className="text-2xl sm:text-3xl font-bold text-center">Währungsrechner</h3>
+                    
+                    {/* From Wizarding Currency */}
+                    <div className="bg-black/20 p-4 rounded-2xl border border-white/10 space-y-4">
+                        <h4 className="font-bold text-lg text-center">Von Zauberwährung</h4>
+                        <div className="grid grid-cols-3 gap-2">
+                            <div>
+                                <label htmlFor="galleons" className="block mb-1 text-xs font-medium opacity-80 text-center">Galleonen</label>
+                                <input id="galleons" type="number" placeholder="0" value={galleons} onChange={e => setGalleons(e.target.value)} className={commonInputStyles + " text-center"} />
+                            </div>
+                            <div>
+                                <label htmlFor="sickles" className="block mb-1 text-xs font-medium opacity-80 text-center">Sickel</label>
+                                <input id="sickles" type="number" placeholder="0" value={sickles} onChange={e => setSickles(e.target.value)} className={commonInputStyles + " text-center"} />
+                            </div>
+                            <div>
+                                <label htmlFor="knuts" className="block mb-1 text-xs font-medium opacity-80 text-center">Knuts</label>
+                                <input id="knuts" type="number" placeholder="0" value={knuts} onChange={e => setKnuts(e.target.value)} className={commonInputStyles + " text-center"} />
+                            </div>
+                        </div>
+                        {inputKnuts > 0 && (
+                             <div className="text-center space-y-1 pt-2 border-t border-white/10 animate-fadeIn">
+                                <p><span className="font-bold text-lg">{inputKnuts.toLocaleString('de-DE')}</span> Knuts</p>
+                                <p><span className="font-bold text-lg">{(inputKnuts / SICKLE_IN_KNUTS).toLocaleString('de-DE', { maximumFractionDigits: 2 })}</span> Sickel</p>
+                                <p><span className="font-bold text-lg">{(inputKnuts / GALLEON_IN_KNUTS).toLocaleString('de-DE', { maximumFractionDigits: 2 })}</span> Galleonen</p>
+                                <p className="text-yellow-300">
+                                    ≈ <span className="font-bold text-lg">{rateLoading ? '...' : formatNumber(euroValueFromWizarding)}</span> EUR
+                                </p>
+                            </div>
+                        )}
+                    </div>
+
+                    {/* From Muggle Currency */}
+                    <div className="bg-black/20 p-4 rounded-2xl border border-white/10 space-y-3">
+                         <h4 className="font-bold text-lg text-center">Von Muggelwährung</h4>
+                         <div>
+                            <label htmlFor="euros" className="block mb-1 text-sm font-medium opacity-80 text-center">Euro (€)</label>
+                            <input id="euros" type="number" placeholder="0.00" value={euros} onChange={e => setEuros(e.target.value)} className={commonInputStyles + " text-center"} />
+                        </div>
+                        {euroInput > 0 && (
+                             <div className="text-center pt-2 border-t border-white/10 animate-fadeIn">
+                                <p className="text-xl font-bold">
+                                    ≈ <span>{canonicalFromEuros.galleons.toLocaleString('de-DE')}</span><span className="text-lg opacity-70"> G</span>,{' '}
+                                    <span>{canonicalFromEuros.sickles.toLocaleString('de-DE')}</span><span className="text-lg opacity-70"> S</span>,{' '}
+                                    <span>{canonicalFromEuros.knuts.toLocaleString('de-DE')}</span><span className="text-lg opacity-70"> K</span>
+                                </p>
+                             </div>
+                        )}
+                    </div>
+                     
+                    <div className="bg-black/20 p-4 rounded-2xl border border-white/10 text-center">
+                        <p className="font-semibold">1 Galleone = {GALLEON_IN_SICKLES} Sickel</p>
+                        <p className="font-semibold">1 Sickel = {SICKLE_IN_KNUTS} Knuts</p>
+                        <hr className="border-white/10 my-2" />
+                        {rateLoading ? (
+                            <p className="font-bold text-yellow-300 animate-pulse">Lade Live-Kurs...</p>
+                        ) : (
+                            <>
+                                <p className="font-bold text-yellow-300">
+                                    1 Galleone = {GALLEON_IN_GBP} £ ≈ {galleonToEur.toLocaleString('de-DE', { style: 'currency', currency: 'EUR' })}
+                                </p>
+                                {rateError && <p className="text-red-400 text-xs mt-1">{rateError} (Fallback wird genutzt)</p>}
+                            </>
+                        )}
+                    </div>
+                </div>
+            </div>
+        </div>
+    );
+};
+
+
 interface DashboardProps {
   currentUser: User;
   users: User[];
@@ -18,6 +202,7 @@ interface DashboardProps {
   moneyRequests: MoneyRequest[];
   onSendMoney: (receiverIds: string[], amount: { g: number; s: number; k: number }, note?: string) => Promise<void>;
   isKing?: boolean;
+  kingEmails: string[];
   globalTransactions?: Transaction[];
   onUpdateUser: (userId: string, updates: { name: string; house: House; balance: number }) => Promise<void>;
   onSoftDeleteUser: (userId: string) => Promise<void>;
@@ -100,11 +285,11 @@ const UserEditModal: React.FC<{
       }
   }
 
-  const commonInputStyles = "w-full p-3 bg-black/20 border border-white/20 rounded-xl focus:ring-2 focus:ring-white focus:outline-none transition-shadow text-base";
+  const commonInputStyles = "w-full p-3 bg-white/5 border border-white/20 rounded-xl focus:ring-2 focus:ring-white/50 focus:bg-white/10 focus:outline-none transition-all text-base";
 
   return (
     <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4 animate-fadeIn" onClick={onClose}>
-        <div className="bg-[#2a2a2a] rounded-3xl p-8 border border-[#FFFFFF59] max-w-md w-full" onClick={e => e.stopPropagation()}>
+        <div className="bg-[#1c1c1c]/80 backdrop-blur-2xl rounded-3xl p-8 border border-white/20 max-w-md w-full" onClick={e => e.stopPropagation()}>
             {showConfirmDelete ? (
                 <div className="text-center">
                     <h3 className="text-xl font-bold mb-2">Nutzer wirklich löschen?</h3>
@@ -1291,12 +1476,12 @@ const SendMoneyView: React.FC<{
         }
     };
 
-    const commonInputStyles = "w-full p-4 bg-[#FFFFFF21] border border-[#FFFFFF59] rounded-2xl focus:ring-2 focus:ring-white focus:outline-none transition-shadow";
+    const commonInputStyles = "w-full p-4 bg-white/5 border border-white/20 rounded-2xl focus:ring-2 focus:ring-white/60 focus:bg-white/10 focus:border-white/40 focus:outline-none transition-all duration-300";
 
     return (
         <div className="space-y-6">
             <h2 className="text-3xl sm:text-4xl font-bold">Geld senden</h2>
-            <div className="bg-[#FFFFFF21] rounded-3xl p-6 sm:p-8 border border-[#FFFFFF59]">
+            <div className="bg-[#1c1c1c]/60 backdrop-blur-2xl rounded-3xl p-6 sm:p-8 border border-white/20">
                 <div className="space-y-6">
                     <div>
                         <label className="block mb-2 text-sm font-medium opacity-80">An</label>
@@ -1311,13 +1496,13 @@ const SendMoneyView: React.FC<{
                             <div className="relative" ref={filterMenuRef}>
                                 <button
                                     onClick={() => setShowFilterMenu(!showFilterMenu)}
-                                    className={`h-12 w-12 flex-shrink-0 flex items-center justify-center rounded-2xl border transition-colors ${selectedHouses.length > 0 ? 'bg-white/10 border-white' : 'bg-[#FFFFFF21] border-[#FFFFFF59] hover:bg-white/10'}`}
+                                    className={`h-12 w-12 flex-shrink-0 flex items-center justify-center rounded-2xl border transition-colors ${selectedHouses.length > 0 ? 'bg-white/10 border-white' : 'bg-white/5 border-white/20 hover:bg-white/10'}`}
                                     aria-label="Nach Haus filtern"
                                 >
                                     <FilterIcon className="w-5 h-5" />
                                 </button>
                                 {showFilterMenu && (
-                                    <div className="absolute right-0 top-full mt-2 w-48 bg-[#2a2a2a] border border-[#FFFFFF59] rounded-2xl p-2 z-10 animate-fadeIn">
+                                    <div className="absolute right-0 top-full mt-2 w-48 bg-[#2a2a2a]/80 backdrop-blur-xl border border-white/20 rounded-2xl p-2 z-10 animate-fadeIn">
                                         <p className="px-2 py-1 text-xs font-bold uppercase opacity-70">Nach Haus filtern</p>
                                         {Object.values(House).map(house => (
                                             <label key={house} className="flex items-center gap-2 p-2 rounded-lg hover:bg-white/10 cursor-pointer">
@@ -1334,7 +1519,7 @@ const SendMoneyView: React.FC<{
                                 )}
                             </div>
                         </div>
-                         <div className="bg-[#FFFFFF21] border border-[#FFFFFF59] rounded-2xl p-2 max-h-48 overflow-y-auto">
+                         <div className="bg-black/20 border border-white/10 rounded-2xl p-2 max-h-48 overflow-y-auto">
                             {filteredUsers.length > 0 ? (
                                 filteredUsers.map(user => (
                                     <label key={user.id} className={`flex items-center p-3 rounded-xl cursor-pointer transition-colors ${receiverIds.includes(user.id) ? 'bg-white/10' : 'hover:bg-white/5'}`}>
@@ -1344,7 +1529,9 @@ const SendMoneyView: React.FC<{
                                             onChange={() => handleReceiverToggle(user.id)}
                                             className="w-5 h-5 rounded-md bg-black/30 border-white/50 text-green-500 focus:ring-green-500/50"
                                         />
-                                        <span className="ml-3 font-medium">{user.name}</span>
+                                        <span className="ml-3 font-medium flex items-center gap-2">
+                                            {user.name}
+                                        </span>
                                         <span className={`ml-auto text-sm font-semibold ${houseTextColors[user.house]}`}>{user.house}</span>
                                     </label>
                                 ))
@@ -1375,7 +1562,7 @@ const SendMoneyView: React.FC<{
                     </div>
                     {error && <p className="text-red-400 text-sm text-center">{error}</p>}
                     {success && <p className="text-green-400 text-sm text-center">{success}</p>}
-                    <button onClick={handleSend} className="w-full text-black bg-white hover:bg-gray-200 font-bold rounded-full text-base h-[3.75rem] transition-colors">
+                    <button onClick={handleSend} className="w-full text-black bg-white hover:bg-gray-200 font-bold rounded-full text-base h-[3.75rem] transition-all hover:scale-[1.02] active:scale-[0.98]">
                         Senden
                     </button>
                 </div>
@@ -1492,7 +1679,7 @@ const RequestMoneyView: React.FC<{
         setDismissedRejectedIds(prev => [...prev, requestId]);
     };
 
-    const commonInputStyles = "w-full p-4 bg-[#FFFFFF21] border border-[#FFFFFF59] rounded-2xl focus:ring-2 focus:ring-white focus:outline-none transition-shadow";
+    const commonInputStyles = "w-full p-4 bg-white/5 border border-white/20 rounded-2xl focus:ring-2 focus:ring-white/60 focus:bg-white/10 focus:border-white/40 focus:outline-none transition-all duration-300";
     const AmountDisplay: React.FC<{ amount: number }> = ({ amount }) => {
         const canonical = knutsToCanonical(amount);
         return (
@@ -1509,7 +1696,7 @@ const RequestMoneyView: React.FC<{
             {/* Form to create a request */}
             <div className="space-y-6">
                 <h2 className="text-3xl sm:text-4xl font-bold">Geld anfordern</h2>
-                <div className="bg-[#FFFFFF21] rounded-3xl p-6 sm:p-8 border border-[#FFFFFF59]">
+                <div className="bg-[#1c1c1c]/60 backdrop-blur-2xl rounded-3xl p-6 sm:p-8 border border-white/20">
                     <div className="space-y-6">
                         <div>
                             <label className="block mb-2 text-sm font-medium opacity-80">Von</label>
@@ -1520,7 +1707,7 @@ const RequestMoneyView: React.FC<{
                                 onChange={e => setSearchTerm(e.target.value)}
                                 className={`${commonInputStyles} mb-2`}
                             />
-                            <div className="bg-[#FFFFFF21] border border-[#FFFFFF59] rounded-2xl p-2 max-h-48 overflow-y-auto">
+                            <div className="bg-black/20 border border-white/10 rounded-2xl p-2 max-h-48 overflow-y-auto">
                                 {filteredUsers.length > 0 ? (
                                     filteredUsers.map(user => (
                                         <label key={user.id} className={`flex items-center p-3 rounded-xl cursor-pointer transition-colors ${requesteeIds.includes(user.id) ? 'bg-white/10' : 'hover:bg-white/5'}`}>
@@ -1530,7 +1717,9 @@ const RequestMoneyView: React.FC<{
                                                 onChange={() => handleRequesteeToggle(user.id)}
                                                 className="w-5 h-5 rounded-md bg-black/30 border-white/50 text-green-500 focus:ring-green-500/50"
                                             />
-                                            <span className="ml-3 font-medium">{user.name}</span>
+                                            <span className="ml-3 font-medium flex items-center gap-2">
+                                                {user.name}
+                                            </span>
                                             <span className={`ml-auto text-sm font-semibold ${houseTextColors[user.house]}`}>{user.house}</span>
                                         </label>
                                     ))
@@ -1553,7 +1742,7 @@ const RequestMoneyView: React.FC<{
                         </div>
                         {formError && <p className="text-red-400 text-sm text-center">{formError}</p>}
                         {formSuccess && <p className="text-green-400 text-sm text-center">{formSuccess}</p>}
-                        <button onClick={handleCreateRequest} className="w-full text-black bg-white hover:bg-gray-200 font-bold rounded-full text-base h-[3.75rem] transition-colors">
+                        <button onClick={handleCreateRequest} className="w-full text-black bg-white hover:bg-gray-200 font-bold rounded-full text-base h-[3.75rem] transition-all hover:scale-[1.02] active:scale-[0.98]">
                             Anfordern
                         </button>
                     </div>
@@ -1571,7 +1760,7 @@ const RequestMoneyView: React.FC<{
                     <div className="space-y-4">
                         {incomingRequests.length > 0 ? (
                             incomingRequests.map(req => (
-                                <div key={req.id} className="bg-[#FFFFFF21] rounded-3xl p-4 sm:p-5 border border-[#FFFFFF59]">
+                                <div key={req.id} className="bg-white/5 backdrop-blur-md rounded-3xl p-4 sm:p-5 border border-white/10">
                                     <div className="flex justify-between items-start">
                                         <div>
                                             <p className="font-bold">
@@ -1623,39 +1812,22 @@ const RequestMoneyView: React.FC<{
 
 const HistoryView: React.FC<{ transactions: Transaction[], currentUserId: string }> = ({ transactions, currentUserId }) => {
     const [searchTerm, setSearchTerm] = useState('');
-    const [filter, setFilter] = useState<'all' | 'sent' | 'received' | 'admin'>('all');
+    const [filter, setFilter] = useState<'all' | 'sent' | 'received'>('all');
 
     const filteredTransactions = transactions.filter(tx => {
         const isAdminChange = tx.note?.startsWith('ADMIN_BALANCE_CHANGE::');
         const isSent = tx.sender_id === currentUserId && !isAdminChange;
-        const isReceived = tx.receiver_id === currentUserId && !isAdminChange;
+        const isReceived = tx.receiver_id === currentUserId; // Admin changes are always received
 
         if (filter === 'sent' && !isSent) return false;
         if (filter === 'received' && !isReceived) return false;
-        if (filter === 'admin' && !isAdminChange) return false;
 
         if (searchTerm.trim() === '') return true;
 
-        const lowerCaseSearch = searchTerm.toLowerCase();
-        const senderName = tx.sender?.name?.toLowerCase() || '';
-        const receiverName = tx.receiver?.name?.toLowerCase() || '';
-        
-        let note = tx.note || '';
-        if (note.includes('|~|')) {
-            note = note.split('|~|')[0];
-        }
-        note = note.toLowerCase();
-        
-        const otherPartyName = isSent ? receiverName : senderName;
+        const searchTokens = searchTerm.toLowerCase().split(' ').filter(Boolean);
+        const searchableString = createSearchableTransactionString(tx);
 
-        if (isAdminChange) {
-            return otherPartyName.includes(lowerCaseSearch);
-        }
-
-        return (
-            otherPartyName.includes(lowerCaseSearch) ||
-            note.includes(lowerCaseSearch)
-        );
+        return searchTokens.every(token => searchableString.includes(token));
     });
 
     if (transactions.length === 0) {
@@ -1710,19 +1882,18 @@ const HistoryView: React.FC<{ transactions: Transaction[], currentUserId: string
         <div className="space-y-6">
             <h2 className="text-3xl sm:text-4xl font-bold">Transaktionsverlauf</h2>
             
-            <div className="bg-[#FFFFFF21] rounded-3xl p-4 sm:p-6 border border-[#FFFFFF59] space-y-4">
+            <div className="bg-[#1c1c1c]/60 backdrop-blur-2xl rounded-3xl p-4 sm:p-6 border border-white/20 space-y-4">
                 <input
                     type="text"
-                    placeholder="Nach Name oder Notiz suchen..."
+                    placeholder="Suche nach Name, Betrag, Datum..."
                     value={searchTerm}
                     onChange={e => setSearchTerm(e.target.value)}
-                    className="w-full p-3 bg-black/20 border border-white/20 rounded-xl focus:ring-2 focus:ring-white focus:outline-none transition-shadow text-base"
+                    className="w-full p-3 bg-black/20 border border-white/20 rounded-xl focus:ring-2 focus:ring-white/50 focus:outline-none transition-shadow text-base"
                 />
                 <div className="flex flex-wrap gap-2">
                     <FilterButton value="all" label="Alle" />
                     <FilterButton value="sent" label="Gesendet" />
                     <FilterButton value="received" label="Erhalten" />
-                    <FilterButton value="admin" label="Admin-Änderungen" />
                 </div>
             </div>
 
@@ -1741,7 +1912,7 @@ const HistoryView: React.FC<{ transactions: Transaction[], currentUserId: string
                                 const changeAmount = newBalanceInKnuts - oldBalanceInKnuts;
 
                                 return (
-                                    <div key={tx.id} className="bg-yellow-500/10 rounded-3xl p-4 sm:p-6 border border-yellow-500/50">
+                                    <div key={tx.id} className="bg-yellow-500/10 backdrop-blur-md rounded-3xl p-4 sm:p-6 border border-yellow-500/50">
                                         <div className="flex justify-between items-center">
                                             <div>
                                                 <p className="font-bold text-yellow-300">Administrative Korrektur</p>
@@ -1760,7 +1931,7 @@ const HistoryView: React.FC<{ transactions: Transaction[], currentUserId: string
                                 // Fallback for old admin change format
                                 const newBalanceInKnuts = parseInt(parts[2], 10);
                                 return (
-                                    <div key={tx.id} className="bg-yellow-500/10 rounded-3xl p-4 sm:p-6 border border-yellow-500/50">
+                                    <div key={tx.id} className="bg-yellow-500/10 backdrop-blur-md rounded-3xl p-4 sm:p-6 border border-yellow-500/50">
                                         <div className="flex justify-between items-center">
                                             <div>
                                                 <p className="font-bold text-yellow-300">Administrative Änderung</p>
@@ -1786,7 +1957,7 @@ const HistoryView: React.FC<{ transactions: Transaction[], currentUserId: string
                         }
 
                         return (
-                            <div key={tx.id} className="bg-[#FFFFFF21] rounded-3xl p-4 sm:p-6 border border-[#FFFFFF59]">
+                            <div key={tx.id} className="bg-white/5 backdrop-blur-md rounded-3xl p-4 sm:p-6 border border-white/10">
                                 <div className="flex justify-between items-center">
                                     <div>
                                         <p className="font-bold">
@@ -1808,7 +1979,7 @@ const HistoryView: React.FC<{ transactions: Transaction[], currentUserId: string
                         );
                     })
                 ) : (
-                    <div className="text-center opacity-70 bg-[#FFFFFF21] rounded-3xl p-8 border border-[#FFFFFF59]">
+                    <div className="text-center opacity-70 bg-white/5 backdrop-blur-md rounded-3xl p-8 border border-white/10">
                         <p className="font-bold text-lg">Keine passenden Transaktionen gefunden.</p>
                         <p className="text-sm">Versuche, deine Suche oder Filter anzupassen.</p>
                     </div>
@@ -1846,21 +2017,10 @@ const AdminView: React.FC<{
         
         if (transactionSearchTerm.trim() === '') return true;
 
-        const lowerCaseSearch = transactionSearchTerm.toLowerCase();
-        const senderName = tx.sender?.name?.toLowerCase() || '';
-        const receiverName = tx.receiver?.name?.toLowerCase() || '';
+        const searchTokens = transactionSearchTerm.toLowerCase().split(' ').filter(Boolean);
+        const searchableString = createSearchableTransactionString(tx);
         
-        let note = tx.note || '';
-        if (note.includes('|~|')) {
-            note = note.split('|~|')[0];
-        }
-        note = !isAdminChange ? (note.toLowerCase() || '') : '';
-        
-        return (
-            senderName.includes(lowerCaseSearch) ||
-            receiverName.includes(lowerCaseSearch) ||
-            note.includes(lowerCaseSearch)
-        );
+        return searchTokens.every(token => searchableString.includes(token));
     });
 
     const TransactionFilterButton: React.FC<{ value: typeof transactionFilter, label: string }> = ({ value, label }) => (
@@ -1898,7 +2058,7 @@ const AdminView: React.FC<{
                 />
             )}
             <h2 className="text-3xl sm:text-4xl font-bold">Admin Panel</h2>
-            <div className="bg-[#FFFFFF21] rounded-3xl p-6 sm:p-8 border border-[#FFFFFF59]">
+            <div className="bg-[#1c1c1c]/60 backdrop-blur-2xl rounded-3xl p-6 sm:p-8 border border-white/20">
                  <div className="flex justify-between items-center mb-4">
                     <h3 className="text-2xl font-bold">Nutzer verwalten</h3>
                     <label className="flex items-center cursor-pointer">
@@ -1916,7 +2076,7 @@ const AdminView: React.FC<{
                         placeholder="Nutzer suchen..."
                         value={userSearchTerm}
                         onChange={e => setUserSearchTerm(e.target.value)}
-                        className="w-full p-3 bg-black/20 border border-white/20 rounded-xl focus:ring-2 focus:ring-white focus:outline-none transition-shadow text-base"
+                        className="w-full p-3 bg-black/20 border border-white/20 rounded-xl focus:ring-2 focus:ring-white/50 focus:outline-none transition-shadow text-base"
                     />
                 </div>
                 <div className="space-y-3">
@@ -1926,7 +2086,9 @@ const AdminView: React.FC<{
                             return (
                                 <div key={user.id} className={`flex items-center justify-between p-3 rounded-2xl ${user.is_deleted ? 'bg-red-500/10' : 'bg-black/20'}`}>
                                     <div>
-                                        <p className="font-semibold">{user.name} {user.id === currentUser.id && '(Du)'}</p>
+                                        <p className="font-semibold flex items-center gap-2">
+                                            {user.name} {user.id === currentUser.id && '(Du)'}
+                                        </p>
                                         <p className="text-sm opacity-70">
                                             {galleons.toLocaleString('de-DE')} G, {sickles.toLocaleString('de-DE')} S, {knuts.toLocaleString('de-DE')} K - <span className={`font-semibold ${houseTextColors[user.house]}`}>{user.house}</span>
                                         </p>
@@ -1958,15 +2120,15 @@ const AdminView: React.FC<{
                 </div>
             </div>
             
-             <div className="bg-[#FFFFFF21] rounded-3xl p-6 sm:p-8 border border-[#FFFFFF59]">
+             <div className="bg-[#1c1c1c]/60 backdrop-blur-2xl rounded-3xl p-6 sm:p-8 border border-white/20">
                 <h3 className="text-2xl font-bold mb-4">Alle Transaktionen</h3>
                 <div className="space-y-3 mb-4">
                     <input
                         type="text"
-                        placeholder="Transaktionen nach Name oder Notiz suchen..."
+                        placeholder="Transaktionen nach Name, Betrag, Datum..."
                         value={transactionSearchTerm}
                         onChange={e => setTransactionSearchTerm(e.target.value)}
-                        className="w-full p-3 bg-black/20 border border-white/20 rounded-xl focus:ring-2 focus:ring-white focus:outline-none transition-shadow text-base"
+                        className="w-full p-3 bg-black/20 border border-white/20 rounded-xl focus:ring-2 focus:ring-white/50 focus:outline-none transition-shadow text-base"
                     />
                     <div className="flex flex-wrap gap-2">
                         <TransactionFilterButton value="all" label="Alle" />
@@ -2129,14 +2291,14 @@ const ProfileView: React.FC<{
     [House.Ravenclaw]: { color: "border-blue-500", label: "Ravenclaw" },
   };
 
-  const commonInputStyles = "w-full p-4 bg-[#FFFFFF21] border border-[#FFFFFF59] rounded-2xl focus:ring-2 focus:ring-white focus:outline-none transition-shadow";
+  const commonInputStyles = "w-full p-4 bg-white/5 border border-white/20 rounded-2xl focus:ring-2 focus:ring-white/60 focus:bg-white/10 focus:border-white/40 focus:outline-none transition-all duration-300";
 
   return (
     <div className="space-y-8">
       {/* Profile Details */}
       <div className="space-y-6">
         <h2 className="text-3xl sm:text-4xl font-bold">Profil bearbeiten</h2>
-        <div className="bg-[#FFFFFF21] rounded-3xl p-6 sm:p-8 border border-[#FFFFFF59] space-y-6">
+        <div className="bg-[#1c1c1c]/60 backdrop-blur-2xl rounded-3xl p-6 sm:p-8 border border-white/20 space-y-6">
           <div>
             <label htmlFor="profile-name" className="block mb-2 text-sm font-medium opacity-80">Name</label>
             <input id="profile-name" type="text" value={name} onChange={e => setName(e.target.value)} className={commonInputStyles} />
@@ -2145,7 +2307,7 @@ const ProfileView: React.FC<{
             <label className="block mb-2 text-sm font-medium opacity-80">Haus</label>
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
               {Object.values(House).map((h) => (
-                <button type="button" key={h} onClick={() => setHouse(h)} className={`p-4 rounded-2xl border-2 transition-all duration-200 text-center font-bold ${house === h ? `${houseDetails[h].color} bg-white/10` : 'border-transparent bg-[#FFFFFF21] hover:bg-white/10'}`}>
+                <button type="button" key={h} onClick={() => setHouse(h)} className={`p-4 rounded-2xl border-2 transition-all duration-300 text-center font-bold ${house === h ? `${houseDetails[h].color} bg-white/20 shadow-lg` : 'border-transparent bg-white/5 hover:bg-white/10'}`}>
                     {houseDetails[h].label}
                 </button>
               ))}
@@ -2153,7 +2315,7 @@ const ProfileView: React.FC<{
           </div>
            {profileError && <p className="text-red-400 text-sm text-center">{profileError}</p>}
            {profileSuccess && <p className="text-green-400 text-sm text-center">{profileSuccess}</p>}
-          <button onClick={handleProfileSave} disabled={!hasProfileChanges} className="w-full text-black bg-white hover:bg-gray-200 font-bold rounded-full text-base h-[3.75rem] transition-colors disabled:bg-gray-400 disabled:cursor-not-allowed">
+          <button onClick={handleProfileSave} disabled={!hasProfileChanges} className="w-full text-black bg-white hover:bg-gray-200 font-bold rounded-full text-base h-[3.75rem] transition-all hover:scale-[1.02] active:scale-[0.98] disabled:bg-gray-400 disabled:cursor-not-allowed disabled:scale-100">
             Profil speichern
           </button>
         </div>
@@ -2162,7 +2324,7 @@ const ProfileView: React.FC<{
       {/* Security */}
       <div className="space-y-6">
         <h2 className="text-3xl sm:text-4xl font-bold">Sicherheit</h2>
-        <div className="bg-[#FFFFFF21] rounded-3xl p-6 sm:p-8 border border-[#FFFFFF59] space-y-6">
+        <div className="bg-[#1c1c1c]/60 backdrop-blur-2xl rounded-3xl p-6 sm:p-8 border border-white/20 space-y-6">
           <div>
             <label className="block mb-2 text-sm font-medium opacity-80">E-Mail</label>
             <p className="p-4 bg-black/20 border border-white/20 rounded-2xl text-white/70">{currentUser.email}</p>
@@ -2177,7 +2339,7 @@ const ProfileView: React.FC<{
           </div>
           {passwordError && <p className="text-red-400 text-sm text-center">{passwordError}</p>}
           {passwordSuccess && <p className="text-green-400 text-sm text-center">{passwordSuccess}</p>}
-          <button onClick={handlePasswordUpdate} disabled={!password || !confirmPassword} className="w-full text-black bg-white hover:bg-gray-200 font-bold rounded-full text-base h-[3.75rem] transition-colors disabled:bg-gray-400 disabled:cursor-not-allowed">
+          <button onClick={handlePasswordUpdate} disabled={!password || !confirmPassword} className="w-full text-black bg-white hover:bg-gray-200 font-bold rounded-full text-base h-[3.75rem] transition-all hover:scale-[1.02] active:scale-[0.98] disabled:bg-gray-400 disabled:cursor-not-allowed disabled:scale-100">
             Passwort ändern
           </button>
         </div>
@@ -2194,6 +2356,7 @@ const Dashboard: React.FC<DashboardProps> = ({
   moneyRequests,
   onSendMoney,
   isKing,
+  kingEmails,
   globalTransactions,
   onUpdateUser,
   onSoftDeleteUser,
@@ -2205,24 +2368,748 @@ const Dashboard: React.FC<DashboardProps> = ({
   onUpdatePassword
 }) => {
   const [activeTab, setActiveTab] = useState('send');
+  const [showCurrencyModal, setShowCurrencyModal] = useState(false);
+  
+  const [pillStyle, setPillStyle] = useState({});
+  const tabContainerRef = useRef<HTMLDivElement>(null);
+  const tabRefs = {
+    send: useRef<HTMLButtonElement>(null),
+    request: useRef<HTMLButtonElement>(null),
+    history: useRef<HTMLButtonElement>(null),
+    profile: useRef<HTMLButtonElement>(null),
+    admin: useRef<HTMLButtonElement>(null),
+  };
+
+  useEffect(() => {
+    const activeTabRef = tabRefs[activeTab as keyof typeof tabRefs];
+    if (activeTabRef.current) {
+      const { offsetLeft, offsetWidth } = activeTabRef.current;
+      setPillStyle({
+        left: `${offsetLeft}px`,
+        width: `${offsetWidth}px`,
+      });
+    }
+  }, [activeTab, isKing]);
 
   const { galleons, sickles, knuts } = knutsToCanonical(currentUser.balance);
 
-  const TabButton: React.FC<{ tabName: string; label: string; icon: React.ReactNode }> = ({ tabName, label, icon }) => (
-    <button
-      onClick={() => setActiveTab(tabName)}
-      className={`flex-1 flex flex-col sm:flex-row items-center justify-center gap-2 py-3 px-4 rounded-full text-sm sm:text-base font-bold transition-colors duration-300 ${activeTab === tabName ? 'bg-white text-black' : 'bg-transparent text-white/80 hover:bg-white/10'}`}
-    >
-      {icon}
-      {label}
-    </button>
-  );
+  const TabButton: React.FC<{ 
+    tabName: string; 
+    label: string; 
+    icon: React.ComponentType<{className?: string}>;
+  }> = ({ tabName, label, icon: Icon }) => {
+    const isActive = activeTab === tabName;
+    const activeColor = houseTextColors[currentUser.house] || 'text-white';
+
+    return (
+        <button
+          ref={tabRefs[tabName as keyof typeof tabRefs]}
+          onClick={() => setActiveTab(tabName)}
+          className={`relative z-10 flex-1 flex flex-col items-center justify-center gap-1 py-2 px-1 rounded-full text-xs transition-colors duration-300 ${isActive ? `${activeColor} font-semibold` : 'text-white/60 hover:text-white'}`}
+          aria-current={isActive}
+        >
+          <Icon className="w-6 h-6 mb-0.5" />
+          <span>{label}</span>
+        </button>
+    );
+  };
+
+    const SendMoneyView: React.FC<{
+        currentUser: User;
+        users: User[];
+        onSendMoney: (receiverIds: string[], amount: { g: number; s: number; k: number }, note?: string) => Promise<void>;
+    }> = ({ currentUser, users, onSendMoney }) => {
+        const [receiverIds, setReceiverIds] = useState<string[]>([]);
+        const [galleons, setGalleons] = useState('');
+        const [sickles, setSickles] = useState('');
+        const [knuts, setKnuts] = useState('');
+        const [note, setNote] = useState('');
+        const [error, setError] = useState('');
+        const [success, setSuccess] = useState('');
+        const [searchTerm, setSearchTerm] = useState('');
+        const [selectedHouses, setSelectedHouses] = useState<House[]>([]);
+        const [showFilterMenu, setShowFilterMenu] = useState(false);
+        const filterMenuRef = useRef<HTMLDivElement>(null);
+        const [notePlaceholder, setNotePlaceholder] = useState('z.B. für Butterbier');
+
+        useEffect(() => {
+            const randomPlaceholder = notePlaceholders[Math.floor(Math.random() * notePlaceholders.length)];
+            setNotePlaceholder(`z.B. ${randomPlaceholder}`);
+        }, []);
+
+        useEffect(() => {
+            const handleClickOutside = (event: MouseEvent) => {
+                if (filterMenuRef.current && !filterMenuRef.current.contains(event.target as Node)) {
+                    setShowFilterMenu(false);
+                }
+            };
+            document.addEventListener("mousedown", handleClickOutside);
+            return () => {
+                document.removeEventListener("mousedown", handleClickOutside);
+            };
+        }, []);
+
+        const otherUsers = users
+            .filter(u => u.id !== currentUser.id && !u.is_deleted)
+            .sort((a, b) => a.name.localeCompare(b.name));
+        
+        const handleReceiverToggle = (userId: string) => {
+            setReceiverIds(prev =>
+                prev.includes(userId)
+                    ? prev.filter(id => id !== userId)
+                    : [...prev, userId]
+            );
+        };
+
+        const handleHouseFilterChange = (house: House) => {
+            setSelectedHouses(prev =>
+                prev.includes(house)
+                    ? prev.filter(h => h !== house)
+                    : [...prev, house]
+            );
+        };
+
+        const filteredUsers = otherUsers.filter(user => {
+            const nameMatch = user.name.toLowerCase().includes(searchTerm.toLowerCase());
+            const houseMatch = selectedHouses.length === 0 || selectedHouses.includes(user.house);
+            return nameMatch && houseMatch;
+        });
+
+        const handleSend = async () => {
+            setError('');
+            setSuccess('');
+            if (receiverIds.length === 0) {
+                setError('Bitte wähle mindestens einen Empfänger aus.');
+                return;
+            }
+
+            const amount = {
+                g: parseInt(galleons) || 0,
+                s: parseInt(sickles) || 0,
+                k: parseInt(knuts) || 0
+            };
+
+            const amountPerRecipient = currencyToKnuts({
+                galleons: amount.g,
+                sickles: amount.s,
+                knuts: amount.k,
+            });
+
+            if (amountPerRecipient <= 0) {
+                setError('Bitte gib einen Betrag größer als 0 an.');
+                return;
+            }
+
+            const totalAmount = amountPerRecipient * receiverIds.length;
+            const canonicalBalance = knutsToCanonical(currentUser.balance);
+            if (totalAmount > currentUser.balance) {
+                setError(`Du hast nicht genügend Geld. Du benötigst ${totalAmount.toLocaleString('de-DE')} K, hast aber nur ${canonicalBalance.galleons} G, ${canonicalBalance.sickles} S, ${canonicalBalance.knuts} K (${currentUser.balance.toLocaleString('de-DE')} K).`);
+                return;
+            }
+            try {
+                await onSendMoney(receiverIds, amount, note.trim());
+                const recipientNames = receiverIds.map(id => users.find(u => u.id === id)?.name).filter(Boolean);
+                const amountString = `${amount.g > 0 ? `${amount.g} G, ` : ''}${amount.s > 0 ? `${amount.s} S, ` : ''}${amount.k} K`;
+                setSuccess(`Du hast ${amountString} an ${recipientNames.length > 1 ? `${recipientNames.length} Personen` : recipientNames[0]} gesendet.`);
+                setReceiverIds([]);
+                setGalleons('');
+                setSickles('');
+                setKnuts('');
+                setNote('');
+            } catch (e: any) {
+                setError(e.message);
+            }
+        };
+
+        const commonInputStyles = "w-full p-4 bg-white/5 border border-white/20 rounded-2xl focus:ring-2 focus:ring-white/60 focus:bg-white/10 focus:border-white/40 focus:outline-none transition-all duration-300";
+
+        return (
+            <div className="space-y-6">
+                <h2 className="text-3xl sm:text-4xl font-bold">Geld senden</h2>
+                <div className="bg-[#1c1c1c]/60 backdrop-blur-2xl rounded-3xl p-6 sm:p-8 border border-white/20">
+                    <div className="space-y-6">
+                        <div>
+                            <label className="block mb-2 text-sm font-medium opacity-80">An</label>
+                            <div className="flex gap-2 mb-2">
+                                <input
+                                    type="text"
+                                    placeholder="Nutzer suchen..."
+                                    value={searchTerm}
+                                    onChange={e => setSearchTerm(e.target.value)}
+                                    className={`${commonInputStyles} p-3 h-12 flex-grow`}
+                                />
+                                <div className="relative" ref={filterMenuRef}>
+                                    <button
+                                        onClick={() => setShowFilterMenu(!showFilterMenu)}
+                                        className={`h-12 w-12 flex-shrink-0 flex items-center justify-center rounded-2xl border transition-colors ${selectedHouses.length > 0 ? 'bg-white/10 border-white' : 'bg-white/5 border-white/20 hover:bg-white/10'}`}
+                                        aria-label="Nach Haus filtern"
+                                    >
+                                        <FilterIcon className="w-5 h-5" />
+                                    </button>
+                                    {showFilterMenu && (
+                                        <div className="absolute right-0 top-full mt-2 w-48 bg-[#2a2a2a]/80 backdrop-blur-xl border border-white/20 rounded-2xl p-2 z-10 animate-fadeIn">
+                                            <p className="px-2 py-1 text-xs font-bold uppercase opacity-70">Nach Haus filtern</p>
+                                            {Object.values(House).map(house => (
+                                                <label key={house} className="flex items-center gap-2 p-2 rounded-lg hover:bg-white/10 cursor-pointer">
+                                                    <input
+                                                        type="checkbox"
+                                                        checked={selectedHouses.includes(house)}
+                                                        onChange={() => handleHouseFilterChange(house)}
+                                                        className="w-4 h-4 rounded bg-black/30 border-white/50 text-green-500 focus:ring-green-500/50"
+                                                    />
+                                                    <span className={`font-medium ${houseTextColors[house]}`}>{house}</span>
+                                                </label>
+                                            ))}
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+                            <div className="bg-black/20 border border-white/10 rounded-2xl p-2 max-h-48 overflow-y-auto">
+                                {filteredUsers.length > 0 ? (
+                                    filteredUsers.map(user => (
+                                        <label key={user.id} className={`flex items-center p-3 rounded-xl cursor-pointer transition-colors ${receiverIds.includes(user.id) ? 'bg-white/10' : 'hover:bg-white/5'}`}>
+                                            <input
+                                                type="checkbox"
+                                                checked={receiverIds.includes(user.id)}
+                                                onChange={() => handleReceiverToggle(user.id)}
+                                                className="w-5 h-5 rounded-md bg-black/30 border-white/50 text-green-500 focus:ring-green-500/50"
+                                            />
+                                            <span className="ml-3 font-medium flex items-center gap-2">
+                                                {user.name}
+                                                {kingEmails.includes(user.email ?? '') && <CrownIcon className="w-5 h-5 text-yellow-400" />}
+                                            </span>
+                                            <span className={`ml-auto text-sm font-semibold ${houseTextColors[user.house]}`}>{user.house}</span>
+                                        </label>
+                                    ))
+                                ) : (
+                                    <p className="p-3 text-center opacity-70">Keine passenden Nutzer gefunden.</p>
+                                )}
+                            </div>
+                        </div>
+                        <div>
+                            <label className="block mb-2 text-sm font-medium opacity-80">Betrag (pro Person)</label>
+                            <div className="grid grid-cols-3 gap-4">
+                                <input type="number" placeholder="Galleonen" value={galleons} onChange={e => setGalleons(e.target.value)} className={commonInputStyles} />
+                                <input type="number" placeholder="Sickel" value={sickles} onChange={e => setSickles(e.target.value)} className={commonInputStyles} />
+                                <input type="number" placeholder="Knut" value={knuts} onChange={e => setKnuts(e.target.value)} className={commonInputStyles} />
+                            </div>
+                        </div>
+                        <div>
+                            <label htmlFor="note" className="block mb-2 text-sm font-medium opacity-80">Notiz (optional)</label>
+                            <input
+                                type="text"
+                                id="note"
+                                value={note}
+                                onChange={e => setNote(e.target.value)}
+                                className={commonInputStyles}
+                                placeholder={notePlaceholder}
+                                maxLength={100}
+                            />
+                        </div>
+                        {error && <p className="text-red-400 text-sm text-center">{error}</p>}
+                        {success && <p className="text-green-400 text-sm text-center">{success}</p>}
+                        <button onClick={handleSend} className="w-full text-black bg-white hover:bg-gray-200 font-bold rounded-full text-base h-[3.75rem] transition-all hover:scale-[1.02] active:scale-[0.98]">
+                            Senden
+                        </button>
+                    </div>
+                </div>
+            </div>
+        );
+    };
+
+    const RequestMoneyView: React.FC<{
+        currentUser: User;
+        users: User[];
+        moneyRequests: MoneyRequest[];
+        onCreateRequest: (requesteeIds: string[], amount: { g: number; s: number; k: number }, note?: string) => Promise<void>;
+        onAcceptRequest: (request: MoneyRequest) => Promise<void>;
+        onRejectRequest: (requestId: string) => Promise<void>;
+    }> = ({ currentUser, users, moneyRequests, onCreateRequest, onAcceptRequest, onRejectRequest }) => {
+        // Form state
+        const [requesteeIds, setRequesteeIds] = useState<string[]>([]);
+        const [galleons, setGalleons] = useState('');
+        const [sickles, setSickles] = useState('');
+        const [knuts, setKnuts] = useState('');
+        const [note, setNote] = useState('');
+        const [formError, setFormError] = useState('');
+        const [formSuccess, setFormSuccess] = useState('');
+        const [searchTerm, setSearchTerm] = useState('');
+        const [notePlaceholder, setNotePlaceholder] = useState('z.B. für Butterbier');
+
+        // Request list state
+        const [requestError, setRequestError] = useState('');
+        const [dismissedRejectedIds, setDismissedRejectedIds] = useState<string[]>([]);
+
+        useEffect(() => {
+            const randomPlaceholder = requestNotePlaceholders[Math.floor(Math.random() * requestNotePlaceholders.length)];
+            setNotePlaceholder(`z.B. ${randomPlaceholder}`);
+        }, []);
+
+        const otherUsers = users
+            .filter(u => u.id !== currentUser.id && !u.is_deleted)
+            .sort((a, b) => a.name.localeCompare(b.name));
+
+        const handleRequesteeToggle = (userId: string) => {
+            setRequesteeIds(prev =>
+                prev.includes(userId)
+                    ? prev.filter(id => id !== userId)
+                    : [...prev, userId]
+            );
+        };
+
+        const filteredUsers = otherUsers.filter(user => user.name.toLowerCase().includes(searchTerm.toLowerCase()));
+
+        const handleCreateRequest = async () => {
+            setFormError('');
+            setFormSuccess('');
+            if (requesteeIds.length === 0) {
+                setFormError('Bitte wähle mindestens einen Empfänger aus.');
+                return;
+            }
+
+            const amount = {
+                g: parseInt(galleons) || 0,
+                s: parseInt(sickles) || 0,
+                k: parseInt(knuts) || 0
+            };
+            // Fix: Call currencyToKnuts with the correct object shape
+            const amountInKnuts = currencyToKnuts({ galleons: amount.g, sickles: amount.s, knuts: amount.k });
+
+            if (amountInKnuts <= 0) {
+                setFormError('Bitte gib einen Betrag größer als 0 an.');
+                return;
+            }
+
+            try {
+                await onCreateRequest(requesteeIds, amount, note.trim());
+                setFormSuccess('Anfrage(n) erfolgreich gesendet.');
+                setRequesteeIds([]);
+                setGalleons('');
+                setSickles('');
+                setKnuts('');
+                setNote('');
+            } catch (e: any) {
+                setFormError(e.message);
+            }
+        };
+
+        const incomingRequests = moneyRequests.filter(r => r.requestee_id === currentUser.id && r.status === 'pending');
+        const yourOpenRequests = moneyRequests.filter(r => r.requester_id === currentUser.id && r.status === 'pending');
+        const yourRejectedRequests = moneyRequests.filter(r => r.requester_id === currentUser.id && r.status === 'rejected' && !dismissedRejectedIds.includes(r.id));
+        
+        const handleAccept = async (request: MoneyRequest) => {
+            setRequestError('');
+            try {
+                if (currentUser.balance < request.amount) {
+                    const canonicalBalance = knutsToCanonical(currentUser.balance);
+                    const canonicalRequest = knutsToCanonical(request.amount);
+                    setRequestError(`Du hast nicht genug Geld. Du benötigst ${canonicalRequest.galleons}G ${canonicalRequest.sickles}S ${canonicalRequest.knuts}K, hast aber nur ${canonicalBalance.galleons}G ${canonicalBalance.sickles}S ${canonicalBalance.knuts}K.`);
+                    return;
+                }
+                await onAcceptRequest(request);
+            } catch (e: any) {
+                setRequestError(e.message);
+            }
+        };
+
+        const handleReject = async (requestId: string) => {
+            setRequestError('');
+            try {
+                await onRejectRequest(requestId);
+            } catch (e: any) {
+                setRequestError(e.message);
+            }
+        };
+
+        const handleDismissRejected = (requestId: string) => {
+            setDismissedRejectedIds(prev => [...prev, requestId]);
+        };
+
+        const commonInputStyles = "w-full p-4 bg-white/5 border border-white/20 rounded-2xl focus:ring-2 focus:ring-white/60 focus:bg-white/10 focus:border-white/40 focus:outline-none transition-all duration-300";
+        const AmountDisplay: React.FC<{ amount: number }> = ({ amount }) => {
+            const canonical = knutsToCanonical(amount);
+            return (
+                <>
+                    {`${canonical.galleons.toLocaleString('de-DE')} `}<span className="text-lg opacity-70">G</span>
+                    {`, ${canonical.sickles.toLocaleString('de-DE')} `}<span className="text-lg opacity-70">S</span>
+                    {`, ${canonical.knuts.toLocaleString('de-DE')} `}<span className="text-lg opacity-70">K</span>
+                </>
+            );
+        };
+
+        return (
+            <div className="space-y-8">
+                {/* Form to create a request */}
+                <div className="space-y-6">
+                    <h2 className="text-3xl sm:text-4xl font-bold">Geld anfordern</h2>
+                    <div className="bg-[#1c1c1c]/60 backdrop-blur-2xl rounded-3xl p-6 sm:p-8 border border-white/20">
+                        <div className="space-y-6">
+                            <div>
+                                <label className="block mb-2 text-sm font-medium opacity-80">Von</label>
+                                <input
+                                    type="text"
+                                    placeholder="Nutzer suchen..."
+                                    value={searchTerm}
+                                    onChange={e => setSearchTerm(e.target.value)}
+                                    className={`${commonInputStyles} mb-2`}
+                                />
+                                <div className="bg-black/20 border border-white/10 rounded-2xl p-2 max-h-48 overflow-y-auto">
+                                    {filteredUsers.length > 0 ? (
+                                        filteredUsers.map(user => (
+                                            <label key={user.id} className={`flex items-center p-3 rounded-xl cursor-pointer transition-colors ${requesteeIds.includes(user.id) ? 'bg-white/10' : 'hover:bg-white/5'}`}>
+                                                <input
+                                                    type="checkbox"
+                                                    checked={requesteeIds.includes(user.id)}
+                                                    onChange={() => handleRequesteeToggle(user.id)}
+                                                    className="w-5 h-5 rounded-md bg-black/30 border-white/50 text-green-500 focus:ring-green-500/50"
+                                                />
+                                                <span className="ml-3 font-medium flex items-center gap-2">
+                                                    {user.name}
+                                                    {kingEmails.includes(user.email ?? '') && <CrownIcon className="w-5 h-5 text-yellow-400" />}
+                                                </span>
+                                                <span className={`ml-auto text-sm font-semibold ${houseTextColors[user.house]}`}>{user.house}</span>
+                                            </label>
+                                        ))
+                                    ) : (
+                                        <p className="p-3 text-center opacity-70">Keine passenden Nutzer gefunden.</p>
+                                    )}
+                                </div>
+                            </div>
+                            <div>
+                                <label className="block mb-2 text-sm font-medium opacity-80">Betrag (pro Person)</label>
+                                <div className="grid grid-cols-3 gap-4">
+                                    <input type="number" placeholder="Galleonen" value={galleons} onChange={e => setGalleons(e.target.value)} className={commonInputStyles} />
+                                    <input type="number" placeholder="Sickel" value={sickles} onChange={e => setSickles(e.target.value)} className={commonInputStyles} />
+                                    <input type="number" placeholder="Knut" value={knuts} onChange={e => setKnuts(e.target.value)} className={commonInputStyles} />
+                                </div>
+                            </div>
+                            <div>
+                                <label htmlFor="request-note" className="block mb-2 text-sm font-medium opacity-80">Notiz (optional)</label>
+                                <input type="text" id="request-note" value={note} onChange={e => setNote(e.target.value)} className={commonInputStyles} placeholder={notePlaceholder} maxLength={100} />
+                            </div>
+                            {formError && <p className="text-red-400 text-sm text-center">{formError}</p>}
+                            {formSuccess && <p className="text-green-400 text-sm text-center">{formSuccess}</p>}
+                            <button onClick={handleCreateRequest} className="w-full text-black bg-white hover:bg-gray-200 font-bold rounded-full text-base h-[3.75rem] transition-all hover:scale-[1.02] active:scale-[0.98]">
+                                Anfordern
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                {/* Lists of requests */}
+                <div className="space-y-6">
+                    <h3 className="text-2xl font-bold">Offene Anfragen</h3>
+                    {requestError && <p className="text-red-400 text-sm text-center bg-red-500/10 p-3 rounded-xl">{requestError}</p>}
+                    
+                    {/* Incoming Requests */}
+                    <div>
+                        <h4 className="text-xl font-bold mb-2">Anfragen an dich</h4>
+                        <div className="space-y-4">
+                            {incomingRequests.length > 0 ? (
+                                incomingRequests.map(req => (
+                                    <div key={req.id} className="bg-white/5 backdrop-blur-md rounded-3xl p-4 sm:p-5 border border-white/10">
+                                        <div className="flex justify-between items-start">
+                                            <div>
+                                                <p className="font-bold">
+                                                    <span className={houseTextColors[req.requester?.house || '']}>{req.requester?.name || 'Unbekannt'}</span>
+                                                </p>
+                                                <p className="text-sm opacity-70">{new Date(req.created_at).toLocaleString('de-DE')}</p>
+                                            </div>
+                                            <p className="font-bold text-lg text-yellow-300"><AmountDisplay amount={req.amount} /></p>
+                                        </div>
+                                        {req.note && <p className="text-sm opacity-80 mt-2 pt-2 border-t border-white/10">{req.note}</p>}
+                                        <div className="flex gap-4 mt-4">
+                                            <button onClick={() => handleReject(req.id)} className="w-full h-12 flex items-center justify-center bg-red-600/20 hover:bg-red-600/40 text-red-300 font-bold rounded-full transition-colors"><XIcon className="w-7 h-7" /></button>
+                                            <button onClick={() => handleAccept(req)} className="w-full h-12 flex items-center justify-center bg-green-600/20 hover:bg-green-600/40 text-green-300 font-bold rounded-full transition-colors"><CheckIcon className="w-7 h-7" /></button>
+                                        </div>
+                                    </div>
+                                ))
+                            ) : <p className="text-center opacity-70 p-4">Du hast keine offenen Anfragen.</p>}
+                        </div>
+                    </div>
+
+                    {/* Your Requests */}
+                    <div>
+                        <h4 className="text-xl font-bold mb-2">Status deiner Anfragen</h4>
+                        <div className="space-y-3">
+                            {yourRejectedRequests.length > 0 && yourRejectedRequests.map(req => (
+                                <div key={req.id} className="relative bg-red-500/10 rounded-2xl p-4 border border-red-500/30">
+                                    <p className="text-sm"><strong className={houseTextColors[req.requestee?.house || '']}>{req.requestee?.name || 'Unbekannt'}</strong> hat deine Anfrage über <strong className="text-red-300"><AmountDisplay amount={req.amount} /></strong> abgelehnt.</p>
+                                    <button onClick={() => handleDismissRejected(req.id)} className="absolute top-1 right-1 p-1 text-white/50 hover:text-white"><XIcon className="w-4 h-4" /></button>
+                                </div>
+                            ))}
+                            {yourOpenRequests.length > 0 ? (
+                                yourOpenRequests.map(req => (
+                                    <div key={req.id} className="bg-black/20 rounded-2xl p-4">
+                                        <div className="flex justify-between items-center">
+                                            <p className="text-sm">Wartet auf Antwort von <strong className={houseTextColors[req.requestee?.house || '']}>{req.requestee?.name || 'Unbekannt'}</strong></p>
+                                            <p className="text-sm font-semibold opacity-80"><AmountDisplay amount={req.amount} /></p>
+                                        </div>
+                                    </div>
+                                ))
+                            ) : yourRejectedRequests.length === 0 ? (
+                                <p className="text-center opacity-70 p-4">Du hast keine Anfragen gesendet.</p>
+                            ) : null}
+                        </div>
+                    </div>
+                </div>
+            </div>
+        );
+    };
+
+    const AdminView: React.FC<{
+        users: User[];
+        transactions: Transaction[];
+        onUpdateUser: DashboardProps['onUpdateUser'];
+        onSoftDeleteUser: DashboardProps['onSoftDeleteUser'];
+        onRestoreUser: DashboardProps['onRestoreUser'];
+        currentUser: User;
+        isKing: boolean;
+    }> = ({ users, transactions, onUpdateUser, onSoftDeleteUser, onRestoreUser, currentUser, isKing }) => {
+        const [editingUser, setEditingUser] = useState<User | null>(null);
+        const [showDeleted, setShowDeleted] = useState(false);
+        const [userSearchTerm, setUserSearchTerm] = useState('');
+        const [transactionSearchTerm, setTransactionSearchTerm] = useState('');
+        const [transactionFilter, setTransactionFilter] = useState<'all' | 'transfer' | 'admin'>('all');
+
+        const sortedUsers = [...users].sort((a, b) => a.name.localeCompare(b.name));
+        const visibleUsers = sortedUsers
+            .filter(u => showDeleted || !u.is_deleted)
+            .filter(u => u.name.toLowerCase().includes(userSearchTerm.toLowerCase()));
+
+        const filteredTransactions = transactions.filter(tx => {
+            const isAdminChange = tx.note?.startsWith('ADMIN_BALANCE_CHANGE::');
+            
+            if (transactionFilter === 'transfer' && isAdminChange) return false;
+            if (transactionFilter === 'admin' && !isAdminChange) return false;
+            
+            if (transactionSearchTerm.trim() === '') return true;
+
+            const searchTokens = transactionSearchTerm.toLowerCase().split(' ').filter(Boolean);
+            const searchableString = createSearchableTransactionString(tx);
+            
+            return searchTokens.every(token => searchableString.includes(token));
+        });
+
+        const TransactionFilterButton: React.FC<{ value: typeof transactionFilter, label: string }> = ({ value, label }) => (
+            <button
+                onClick={() => setTransactionFilter(value)}
+                className={`px-3 py-1.5 rounded-full text-xs font-semibold transition-colors ${transactionFilter === value ? 'bg-white text-black' : 'bg-black/30 hover:bg-black/50'}`}
+            >
+                {label}
+            </button>
+        );
+        
+        const ORIGINAL_KING_EMAIL = 'luca.lombino@icloud.com';
+        const KINGSLEY_EMAIL = 'da-hauspokal-orga@outlook.com';
+        const TEST_LUSA_EMAIL = 'lucagauntda7@gmail.com';
+
+        const canCurrentUserDeleteUser = (targetUser: User) => {
+            if (!isKing) return false;
+            if (targetUser.id === currentUser.id) return false; // Can't delete self
+            if (currentUser.email === KINGSLEY_EMAIL && (targetUser.email === ORIGINAL_KING_EMAIL || targetUser.email === TEST_LUSA_EMAIL)) {
+                return false; // Kingsley can't delete Original King or Test-Lusa
+            }
+            return true;
+        };
+
+
+        return (
+            <div className="space-y-6">
+                {editingUser && (
+                    <UserEditModal
+                        user={editingUser}
+                        onClose={() => setEditingUser(null)}
+                        onSave={onUpdateUser}
+                        onDelete={onSoftDeleteUser}
+                        currentUser={currentUser}
+                    />
+                )}
+                <h2 className="text-3xl sm:text-4xl font-bold">Admin Panel</h2>
+                <div className="bg-[#1c1c1c]/60 backdrop-blur-2xl rounded-3xl p-6 sm:p-8 border border-white/20">
+                    <div className="flex justify-between items-center mb-4">
+                        <h3 className="text-2xl font-bold">Nutzer verwalten</h3>
+                        <label className="flex items-center cursor-pointer">
+                            <span className="mr-2 text-sm">Gelöschte anzeigen</span>
+                            <div className="relative">
+                                <input type="checkbox" checked={showDeleted} onChange={() => setShowDeleted(!showDeleted)} className="sr-only" />
+                                <div className={`block w-10 h-6 rounded-full ${showDeleted ? 'bg-white' : 'bg-black/30'}`}></div>
+                                <div className={`dot absolute left-1 top-1 bg-black/50 w-4 h-4 rounded-full transition-transform ${showDeleted ? 'transform translate-x-full bg-green-500' : ''}`}></div>
+                            </div>
+                        </label>
+                    </div>
+                    <div className="mb-4">
+                        <input
+                            type="text"
+                            placeholder="Nutzer suchen..."
+                            value={userSearchTerm}
+                            onChange={e => setUserSearchTerm(e.target.value)}
+                            className="w-full p-3 bg-black/20 border border-white/20 rounded-xl focus:ring-2 focus:ring-white/50 focus:outline-none transition-shadow text-base"
+                        />
+                    </div>
+                    <div className="space-y-3">
+                        {visibleUsers.length > 0 ? (
+                            visibleUsers.map(user => {
+                                const { galleons, sickles, knuts } = knutsToCanonical(user.balance);
+                                return (
+                                    <div key={user.id} className={`flex items-center justify-between p-3 rounded-2xl ${user.is_deleted ? 'bg-red-500/10' : 'bg-black/20'}`}>
+                                        <div>
+                                            <p className="font-semibold flex items-center gap-2">
+                                                {user.name} {user.id === currentUser.id && '(Du)'}
+                                                {kingEmails.includes(user.email ?? '') && <CrownIcon className="w-5 h-5 text-yellow-400" />}
+                                            </p>
+                                            <p className="text-sm opacity-70">
+                                                {galleons.toLocaleString('de-DE')} G, {sickles.toLocaleString('de-DE')} S, {knuts.toLocaleString('de-DE')} K - <span className={`font-semibold ${houseTextColors[user.house]}`}>{user.house}</span>
+                                            </p>
+                                        </div>
+                                        <div className="flex gap-2">
+                                        {user.is_deleted ? (
+                                                <button onClick={() => onRestoreUser(user.id)} className="p-2 hover:bg-white/20 rounded-full transition-colors" aria-label="Nutzer wiederherstellen">
+                                                    <RestoreIcon />
+                                                </button>
+                                        ) : (
+                                            <>
+                                                <button onClick={() => setEditingUser(user)} className="p-2 hover:bg-white/20 rounded-full transition-colors" aria-label="Nutzer bearbeiten">
+                                                    <UserEditIcon className="w-5 h-5" />
+                                                </button>
+                                                {canCurrentUserDeleteUser(user) && (
+                                                    <button onClick={() => onSoftDeleteUser(user.id)} className="p-2 hover:bg-white/20 rounded-full transition-colors" aria-label="Nutzer löschen">
+                                                        <TrashIcon className="w-5 h-5" />
+                                                    </button>
+                                                )}
+                                            </>
+                                        )}
+                                        </div>
+                                    </div>
+                                );
+                            })
+                        ) : (
+                            <p className="text-center opacity-70 p-4">Keine passenden Nutzer gefunden.</p>
+                        )}
+                    </div>
+                </div>
+                
+                <div className="bg-[#1c1c1c]/60 backdrop-blur-2xl rounded-3xl p-6 sm:p-8 border border-white/20">
+                    <h3 className="text-2xl font-bold mb-4">Alle Transaktionen</h3>
+                    <div className="space-y-3 mb-4">
+                        <input
+                            type="text"
+                            placeholder="Transaktionen nach Name, Betrag, Datum..."
+                            value={transactionSearchTerm}
+                            onChange={e => setTransactionSearchTerm(e.target.value)}
+                            className="w-full p-3 bg-black/20 border border-white/20 rounded-xl focus:ring-2 focus:ring-white/50 focus:outline-none transition-shadow text-base"
+                        />
+                        <div className="flex flex-wrap gap-2">
+                            <TransactionFilterButton value="all" label="Alle" />
+                            <TransactionFilterButton value="transfer" label="Überweisungen" />
+                            <TransactionFilterButton value="admin" label="Admin-Änderungen" />
+                        </div>
+                    </div>
+                    <div className="space-y-3 max-h-96 overflow-y-auto pr-2">
+                        {filteredTransactions.length > 0 ? filteredTransactions.map(tx => {
+                            const isAdminChange = tx.note?.startsWith('ADMIN_BALANCE_CHANGE::');
+
+                            if (isAdminChange) {
+                                const parts = tx.note.split('::');
+                                const adminName = tx.sender?.name || 'Unbekannt';
+                                const targetUserName = tx.receiver?.name || 'Unbekannt';
+
+                                // New format: ADMIN_BALANCE_CHANGE::king_id::user_id::old_balance::new_balance
+                                if (parts.length >= 5) {
+                                    const oldBalanceInKnuts = parseInt(parts[3], 10);
+                                    const newBalanceInKnuts = parseInt(parts[4], 10);
+                                    const changeAmount = newBalanceInKnuts - oldBalanceInKnuts;
+                                    const canonicalOld = knutsToCanonical(oldBalanceInKnuts);
+                                    const canonicalNew = knutsToCanonical(newBalanceInKnuts);
+                                    return (
+                                        <div key={tx.id} className="bg-yellow-500/10 p-3 rounded-xl text-sm border border-yellow-500/20 space-y-1">
+                                            <p>
+                                                <strong className={tx.sender ? houseTextColors[tx.sender.house] : ''}>{adminName}</strong>
+                                                {' änderte Kontostand von '}
+                                                <strong className={tx.receiver ? houseTextColors[tx.receiver.house] : ''}>{targetUserName}</strong>.
+                                            </p>
+                                            <div className="flex justify-between items-center text-xs opacity-80">
+                                                <span>Alter Stand:</span>
+                                                <span>{`${canonicalOld.galleons} G, ${canonicalOld.sickles} S, ${canonicalOld.knuts} K`}</span>
+                                            </div>
+                                            <div className="flex justify-between items-center text-xs">
+                                                <span>Neuer Stand:</span>
+                                                <span className="font-bold">{`${canonicalNew.galleons} G, ${canonicalNew.sickles} S, ${canonicalNew.knuts} K`}</span>
+                                            </div>
+                                            <div className="flex justify-between items-center font-semibold pt-1 mt-1 border-t border-yellow-500/20">
+                                                <span>Änderung:</span>
+                                                <span className={changeAmount >= 0 ? 'text-green-400' : 'text-red-400'}>
+                                                    {changeAmount >= 0 ? '+' : ''}{Math.abs(changeAmount).toLocaleString('de-DE')} K
+                                                </span>
+                                            </div>
+                                            <p className="opacity-60 text-xs text-right">{new Date(tx.created_at).toLocaleString()}</p>
+                                        </div>
+                                    );
+                                } else {
+                                    // Fallback for old format
+                                    const newBalanceInKnuts = parseInt(parts[2], 10);
+                                    const canonicalNew = knutsToCanonical(newBalanceInKnuts);
+
+                                    return (
+                                        <div key={tx.id} className="bg-yellow-500/10 p-3 rounded-xl text-sm border border-yellow-500/20 space-y-1">
+                                            <p>
+                                                <strong className={tx.sender ? houseTextColors[tx.sender.house] : ''}>{adminName}</strong>
+                                                {' änderte Kontostand von '}
+                                                <strong className={tx.receiver ? houseTextColors[tx.receiver.house] : ''}>{targetUserName}</strong>.
+                                            </p>
+                                            <div className="flex justify-between items-center">
+                                                <span>Neuer Stand:</span>
+                                                <span className="font-bold">{`${canonicalNew.galleons} G, ${canonicalNew.sickles} S, ${canonicalNew.knuts} K`}</span>
+                                            </div>
+                                            <p className="text-xs opacity-70 text-center pt-1">(Ältere Transaktion, alter Kontostand nicht verfügbar)</p>
+                                            <p className="opacity-60 text-xs text-right pt-1">{new Date(tx.created_at).toLocaleString()}</p>
+                                        </div>
+                                    );
+                                }
+                            }
+                            
+                            let userNote = tx.note || '';
+                            if (userNote.includes('|~|')) {
+                                userNote = userNote.split('|~|')[0];
+                            }
+                            
+                            const canonicalAmount = knutsToCanonical(tx.amount);
+
+                            return (
+                                <div key={tx.id} className="bg-black/20 p-3 rounded-xl text-sm">
+                                    <p>
+                                        <strong className={tx.sender ? houseTextColors[tx.sender.house] : ''}>{tx.sender?.name || 'Unbekannt'}</strong>
+                                        {' -> '}
+                                        <strong className={tx.receiver ? houseTextColors[tx.receiver.house] : ''}>{tx.receiver?.name || 'Unbekannt'}</strong>
+                                        : {`${canonicalAmount.galleons} G, ${canonicalAmount.sickles} S, ${canonicalAmount.knuts} K`}
+                                    </p>
+                                    <p className="opacity-60 text-xs mt-1">{new Date(tx.created_at).toLocaleString()}</p>
+                                    {userNote && <p className="text-white/80 mt-1 pt-1 border-t border-white/10 text-xs"><em>{userNote}</em></p>}
+                                </div>
+                            );
+                        }) : (
+                            <p className="text-center opacity-70 p-4">Keine passenden Transaktionen gefunden.</p>
+                        )}
+                    </div>
+                </div>
+            </div>
+        );
+    };
 
   return (
     <div className="container mx-auto p-4 pt-28 md:pt-32 pb-24">
       <div className="max-w-3xl mx-auto">
-        <div className="bg-[#FFFFFF21] rounded-3xl p-6 sm:p-8 mb-8 border border-[#FFFFFF59] text-center">
-            <p className="text-sm font-semibold uppercase opacity-70 tracking-widest">Kontostand</p>
+        <div className="bg-[#1c1c1c]/60 backdrop-blur-2xl rounded-3xl p-6 sm:p-8 mb-8 border border-white/20 text-center">
+            <div className="flex justify-center items-center gap-2">
+              <p className="text-sm font-semibold uppercase opacity-70 tracking-widest">Kontostand</p>
+              <button 
+                onClick={() => setShowCurrencyModal(true)} 
+                className="text-white/60 hover:text-white transition-colors"
+                aria-label="Währungsinformationen anzeigen"
+              >
+                  <InfoIcon className="w-5 h-5" />
+              </button>
+            </div>
             <div className="my-2 text-4xl sm:text-5xl font-extrabold tracking-tighter">
                 <span>{galleons.toLocaleString('de-DE')}</span><span className="text-3xl sm:text-4xl opacity-70 font-bold"> G</span>{' '}
                 <span>{sickles.toLocaleString('de-DE')}</span><span className="text-3xl sm:text-4xl opacity-70 font-bold"> S</span>{' '}
@@ -2231,12 +3118,17 @@ const Dashboard: React.FC<DashboardProps> = ({
             <p className="text-xs opacity-50">entspricht {currentUser.balance.toLocaleString('de-DE')} Knuts</p>
         </div>
 
-        <div className="bg-[#FFFFFF21] rounded-full p-1.5 flex gap-1.5 border border-[#FFFFFF59] mb-8">
-            <TabButton tabName="send" label="Senden" icon={<SendIcon />} />
-            <TabButton tabName="request" label="Anfordern" icon={<BanknotesIcon />} />
-            <TabButton tabName="history" label="Verlauf" icon={<HistoryIcon />} />
-            <TabButton tabName="profile" label="Profil" icon={<UserIcon />} />
-            {isKing && <TabButton tabName="admin" label="Admin" icon={<AdminIcon />} />}
+        <div ref={tabContainerRef} className="relative bg-black/30 backdrop-blur-xl rounded-full p-1.5 flex gap-1.5 border border-white/10 mb-8 sticky top-24 z-20">
+            <div
+              className="absolute top-1.5 bottom-1.5 bg-white/10 rounded-full transition-all duration-300 ease-in-out"
+              style={pillStyle}
+              aria-hidden="true"
+            ></div>
+            <TabButton tabName="send" label="Senden" icon={SendIcon} />
+            <TabButton tabName="request" label="Anfordern" icon={BanknotesIcon} />
+            <TabButton tabName="history" label="Verlauf" icon={HistoryIcon} />
+            <TabButton tabName="profile" label="Profil" icon={UserIcon} />
+            {isKing && <TabButton tabName="admin" label="Admin" icon={AdminIcon} />}
         </div>
         
         <div className="animate-fadeIn">
@@ -2283,6 +3175,7 @@ const Dashboard: React.FC<DashboardProps> = ({
             )}
         </div>
       </div>
+      {showCurrencyModal && <CurrencyConverterModal onClose={() => setShowCurrencyModal(false)} />}
     </div>
   );
 };

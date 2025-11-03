@@ -31,7 +31,7 @@ const Header: React.FC<HeaderProps> = ({ currentUser, onLogout }) => {
   };
 
   return (
-    <header className="bg-[#121212] p-4 border-b border-[#FFFFFF59] fixed top-0 left-0 right-0 z-10">
+    <header className="bg-[#121212]/80 backdrop-blur-xl p-4 border-b border-white/10 fixed top-0 left-0 right-0 z-30">
       <div className="container mx-auto flex justify-between items-center">
         <h1 className="text-[2rem] md:text-[3.25rem] font-black tracking-wider uppercase">
           Gringotts

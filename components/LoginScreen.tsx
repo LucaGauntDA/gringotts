@@ -56,13 +56,13 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin, onRegister, error })
     setLocalError('');
   };
 
-  const commonInputStyles = "w-full p-4 bg-[#FFFFFF21] border border-[#FFFFFF59] rounded-2xl focus:ring-2 focus:ring-white focus:outline-none transition-shadow";
+  const commonInputStyles = "w-full p-4 bg-white/5 border border-white/20 rounded-2xl focus:ring-2 focus:ring-white/60 focus:bg-white/10 focus:border-white/40 focus:outline-none transition-all duration-300";
 
   return (
     <>
       {showInfoModal && (
         <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4" onClick={() => setShowInfoModal(false)}>
-            <div className="bg-[#2a2a2a] rounded-3xl p-8 border border-[#FFFFFF59] max-w-sm w-full" onClick={e => e.stopPropagation()}>
+            <div className="bg-[#1c1c1c]/80 backdrop-blur-2xl rounded-3xl p-8 border border-white/20 max-w-sm w-full" onClick={e => e.stopPropagation()}>
                 <h3 className="text-xl font-bold mb-4">Warum du deine E-Mail angeben musst</h3>
                 <p className="opacity-80 mb-6">
                     Deine E-Mail-Adresse wird für die Anmeldung benötigt. Bitte gib deine echte E-Mail-Adresse an. Sie wird sicher in <a href="https://supabase.com" target="_blank" rel="noopener noreferrer" className="text-white font-semibold underline">Supabase</a> gespeichert. In der Regel erhältst du keine Bestätigungs-E-Mail. Falls doch, klicke bitte auf den Link darin oder gib den Code in dem dann erscheinenden Fenster ein.
@@ -78,7 +78,7 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin, onRegister, error })
           <h1 className="text-4xl sm:text-[3.25rem] font-black text-center mb-8 leading-tight">
             Willkommen bei Gringotts
           </h1>
-          <div className="bg-[#FFFFFF21] rounded-3xl p-6 sm:p-8 border border-[#FFFFFF59]">
+          <div className="bg-[#1c1c1c]/60 backdrop-blur-2xl rounded-3xl p-6 sm:p-8 border border-white/20 shadow-2xl">
             {isRegistering ? (
               <form onSubmit={handleRegister} className="space-y-6">
                 <h2 className="text-3xl sm:text-[2.25rem] font-bold text-center leading-tight">Neues Konto</h2>
@@ -137,14 +137,14 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin, onRegister, error })
                   <label className="block mb-2 text-sm font-medium opacity-80">Haus</label>
                   <div className="grid grid-cols-2 gap-4">
                     {Object.values(House).map((h) => (
-                      <button type="button" key={h} onClick={() => setHouse(h)} className={`p-4 rounded-2xl border-2 transition-all duration-200 text-center font-bold ${house === h ? `${houseDetails[h].color} bg-white/10` : 'border-transparent bg-[#FFFFFF21] hover:bg-white/10'}`}>
+                      <button type="button" key={h} onClick={() => setHouse(h)} className={`p-4 rounded-2xl border-2 transition-all duration-300 text-center font-bold ${house === h ? `${houseDetails[h].color} bg-white/20 shadow-lg` : 'border-transparent bg-white/5 hover:bg-white/10'}`}>
                           {houseDetails[h].label}
                       </button>
                     ))}
                   </div>
                 </div>
                 {(localError || error) && <p className="text-red-400 text-sm text-center">{localError || error}</p>}
-                <button type="submit" className="w-full text-black bg-white hover:bg-gray-200 focus:ring-4 focus:outline-none focus:ring-gray-300 font-bold rounded-full text-base px-5 text-center transition-colors duration-300 h-[3.75rem]">
+                <button type="submit" className="w-full text-black bg-white hover:bg-gray-200 focus:ring-4 focus:outline-none focus:ring-gray-300 font-bold rounded-full text-base px-5 text-center transition-all duration-300 h-[3.75rem] hover:scale-[1.02] active:scale-[0.98]">
                   Registrieren
                 </button>
                 <p className="text-sm text-center">
@@ -192,7 +192,7 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin, onRegister, error })
                   </div>
                 </div>
                 {error && <p className="text-red-400 text-sm text-center">{error}</p>}
-                <button type="submit" className="w-full text-black bg-white hover:bg-gray-200 focus:ring-4 focus:outline-none focus:ring-gray-300 font-bold rounded-full text-base px-5 text-center transition-colors duration-300 h-[3.75rem]">
+                <button type="submit" className="w-full text-black bg-white hover:bg-gray-200 focus:ring-4 focus:outline-none focus:ring-gray-300 font-bold rounded-full text-base px-5 text-center transition-all duration-300 h-[3.75rem] hover:scale-[1.02] active:scale-[0.98]">
                   Einloggen
                 </button>
                 <p className="text-sm text-center">

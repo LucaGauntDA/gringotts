@@ -68,332 +68,288 @@ const App: React.FC = () => {
             .select('*, sender:users!sender_id(id, name, house), receiver:users!receiver_id(id, name, house)')
             .or(`sender_id.eq.${currentUserData.id},receiver_id.eq.${currentUserData.id}`)
             .order('created_at', { ascending: false });
-        
         if (transError) throw transError;
         setTransactions(transData || []);
 
         const { data: requestsData, error: requestsError } = await supabase
-            .from('money_request')
+            .from('money_requests')
             .select('*, requester:users!requester_id(id, name, house), requestee:users!requestee_id(id, name, house)')
             .or(`requester_id.eq.${currentUserData.id},requestee_id.eq.${currentUserData.id}`)
             .order('created_at', { ascending: false });
-
         if (requestsError) throw requestsError;
         setMoneyRequests(requestsData || []);
-
-    } else {
-        setTransactions([]);
-        setMoneyRequests([]);
     }
 
     if (userIsKing) {
-      const { data: globalTransData, error: globalTransError } = await supabase
-          .from('transactions')
-          .select('*, sender:users_with_email!sender_id(id, name, house, email), receiver:users_with_email!receiver_id(id, name, house, email)')
-          .order('created_at', { ascending: false });
-      
-      if (globalTransError) throw globalTransError;
-      setGlobalTransactions(globalTransData || []);
-    } else {
-        setGlobalTransactions([]);
+      const { data: allTransData, error: allTransError } = await supabase
+        .from('transactions')
+        .select('*, sender:users!sender_id(id, name, house), receiver:users!receiver_id(id, name, house)')
+        .order('created_at', { ascending: false });
+      if (allTransError) throw allTransError;
+      setGlobalTransactions(allTransData || []);
     }
   }, []);
-  
-  const initialLoad = useCallback(async () => {
+
+  const fetchDataWithRetry = useCallback(async () => {
     setLoading(true);
     setConnectionError(null);
-
-    if (!isSupabaseConfigured) {
-        setConnectionError('Die Supabase-Zugangsdaten fehlen! Bitte öffne die Datei `supabaseClient.ts` und trage deine Supabase URL und deinen anon key ein. Du findest diese Werte in deinem Supabase-projekt unter "Project Settings" > "API".');
-        setLoading(false);
-        return;
-    }
-
     try {
-        const dataPromise = refreshData();
-        const timeoutPromise = new Promise(resolve => setTimeout(resolve, 1500));
-        await Promise.all([dataPromise, timeoutPromise]);
-    } catch (error: any) {
-        console.error("Error loading initial data:", error);
-        if (error.message.includes('Failed to fetch')) {
-             setConnectionError('Verbindung zum Server fehlgeschlagen. Bitte überprüfe deine Internetverbindung und stelle sicher, dass deine Supabase-Zugangsdaten in `supabaseClient.ts` korrekt sind.');
-        } else {
-             setConnectionError(`Ein unerwarteter Fehler ist aufgetreten: ${error.message}`);
-        }
+      await refreshData();
+    } catch (error: unknown) {
+      console.error("Connection error:", error);
+      let errorMessage = 'Verbindung fehlgeschlagen. Bitte prüfe deine Internetverbindung und versuche es erneut.';
+      
+      if (error instanceof Error) {
+        errorMessage = error.message;
+      } else if (typeof error === 'string') {
+        errorMessage = error;
+      } else if (error && typeof error === 'object' && 'message' in error && typeof (error as any).message === 'string') {
+        errorMessage = (error as any).message;
+      }
+      
+      // Prevent "[object Object]" from ever being displayed
+      if (errorMessage === '[object Object]') {
+          errorMessage = 'Ein unbekannter Fehler ist aufgetreten. Bitte versuche es später erneut.';
+      }
+      
+      setConnectionError(errorMessage);
     } finally {
-        setLoading(false);
+      setLoading(false);
     }
   }, [refreshData]);
 
-
   useEffect(() => {
-    initialLoad();
+    if (!isSupabaseConfigured) {
+      setConnectionError("Supabase ist nicht konfiguriert. Bitte trage die Zugangsdaten in 'supabaseClient.ts' ein.");
+      setLoading(false);
+      return;
+    }
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, newSession) => {
-        setSession(newSession);
-        if(newSession) {
-            refreshData().catch(error => {
-                 if (error.message.includes('Failed to fetch')) {
-                    setConnectionError('Verbindung zum Server verloren. Bitte überprüfe deine Internetverbindung.');
-                 }
-            });
-        } else {
-            // Handles logout
-            setCurrentUser(null);
-            setUsers([]);
-            setTransactions([]);
-            setGlobalTransactions([]);
-            setMoneyRequests([]);
-            setIsKing(false);
-        }
+    fetchDataWithRetry();
+
+    const { data: authListener } = supabase.auth.onAuthStateChange((_event, session) => {
+      setSession(session);
+      // When auth state changes, refetch all data.
+      fetchDataWithRetry();
     });
 
-    return () => subscription.unsubscribe();
-  }, [initialLoad, refreshData]);
+    return () => {
+      authListener.subscription.unsubscribe();
+    };
+  }, [fetchDataWithRetry]);
+
+  const handleLogin = async (identifier: string, password: string) => {
+    setAuthError(null);
+    const { error } = await supabase.auth.signInWithPassword({
+      email: identifier,
+      password: password,
+    });
+    if (error) setAuthError(error.message);
+  };
 
   const handleRegister = async (name: string, house: House, password: string, email: string) => {
     setAuthError(null);
-    try {
-      if (password.length < 6) {
-        throw new Error("Das Passwort muss mindestens 6 Zeichen lang sein.");
-      }
-      
-      const { data, error } = await supabase.auth.signUp({
-        email: email,
-        password: password,
-        options: {
-          data: {
-            name: name.trim(),
-            house: house,
-          }
-        }
-      });
+    const { data, error } = await supabase.auth.signUp({
+      email,
+      password,
+      options: {
+        data: {
+          name: name,
+          house: house,
+          balance: 0,
+        },
+      },
+    });
 
-      if (error) throw error;
-      if (!data.user) throw new Error("Registrierung fehlgeschlagen, bitte versuche es erneut.");
-      
+    if (error) {
+      setAuthError(error.message);
+    } else if (data.user && !data.session) {
+      // User created, but needs email verification
       setEmailForVerification(email);
-
-    } catch (error: any) {
-      if (error.message.includes("Failed to fetch")) {
-        setAuthError("Verbindung zum Server fehlgeschlagen. Bitte überprüfe deine Internetverbindung und die Supabase-Konfiguration.");
-      } else if (error.message.includes("User already registered")) {
-        setAuthError("Ein Nutzer mit dieser E-Mail-Adresse existiert bereits.");
-      } else {
-        setAuthError(error.message || 'Registrierung fehlgeschlagen.');
-      }
     }
   };
-
+  
   const handleVerifyOtp = async (email: string, token: string) => {
     setAuthError(null);
-    try {
-      const { error } = await supabase.auth.verifyOtp({
-        email,
-        token,
-        type: 'signup',
-      });
-      if (error) throw error;
+    const { error } = await supabase.auth.verifyOtp({
+      email,
+      token,
+      type: 'signup'
+    });
+    if (error) {
+      setAuthError(error.message);
+    } else {
       setEmailForVerification(null);
-    } catch (error: any) {
-      if (error.message.includes("Failed to fetch")) {
-          setAuthError("Verbindung zum Server fehlgeschlagen. Bitte überprüfe deine Internetverbindung.");
-      } else {
-          setAuthError(error.message || 'Ungültiger oder abgelaufener Code.');
-      }
-    }
-  };
-
-
-  const handleLogin = async (email: string, password: string) => {
-    setAuthError(null);
-    try {
-        const { error: signInError } = await supabase.auth.signInWithPassword({
-            email: email.trim(),
-            password,
-        });
-        if (signInError) throw signInError;
-        // onAuthStateChange will handle the session update and data refresh
-    } catch (error: any) {
-        if (error.message.includes("Failed to fetch")) {
-            setAuthError("Verbindung zum Server fehlgeschlagen. Bitte überprüfe deine Internetverbindung.");
-        } else if (error.message.includes("Invalid login credentials")) {
-            setAuthError("Falsche E-Mail-Adresse oder falsches Passwort.");
-        } else {
-            setAuthError(error.message || 'Einloggen fehlgeschlagen.');
-        }
+      // The onAuthStateChange listener will handle fetching data
     }
   };
 
   const handleLogout = async () => {
-    await supabase.auth.signOut();
-    // onAuthStateChange will clear the state
+    setLoading(true);
+    const { error } = await supabase.auth.signOut();
+    if (error) {
+      setAuthError(error.message);
+      setLoading(false);
+    } else {
+      // Clear all state on logout
+      setSession(null);
+      setCurrentUser(null);
+      setUsers([]);
+      setTransactions([]);
+      setMoneyRequests([]);
+      setGlobalTransactions([]);
+      setIsKing(false);
+      setLoading(false);
+    }
   };
-
+  
   const handleSendMoney = async (receiverIds: string[], amount: { g: number; s: number; k: number }, note?: string) => {
-    if (!currentUser) throw new Error("Nicht eingeloggt.");
+    if (!currentUser) throw new Error("Benutzer nicht eingeloggt.");
     
-    const amountInKnuts = currencyToKnuts({ galleons: amount.g, sickles: amount.s, knuts: amount.k });
-
-    if (amountInKnuts <= 0) throw new Error("Betrag muss positiv sein.");
-    if (receiverIds.length === 0) throw new Error("Kein Empfänger ausgewählt.");
-
+    const amountInKnuts = currencyToKnuts({
+      galleons: amount.g,
+      sickles: amount.s,
+      knuts: amount.k
+    });
     const totalAmount = amountInKnuts * receiverIds.length;
-    if (totalAmount > currentUser.balance) {
+    
+    if (currentUser.balance < totalAmount) {
       throw new Error("Nicht genügend Guthaben.");
     }
 
-    const amountBreakdown = { g: amount.g, s: amount.s, k: amount.k };
-    const augmentedNote = `${note || ''}|~|${JSON.stringify(amountBreakdown)}`;
-
-    // Use an RPC function to ensure atomic transaction
+    // The function 'send_money_to_multiple' does not exist in the database.
+    // We will call the existing 'send_money' function for each receiver individually.
     for (const receiverId of receiverIds) {
-        const { error } = await supabase.rpc('send_money', {
-            amount_in: amountInKnuts,
-            note_in: augmentedNote,
-            receiver_id_in: receiverId,
-            sender_id_in: currentUser.id,
-        });
-
-        if (error) {
-            console.error('Transaction error:', error);
-            throw new Error(`Transaktion an ${users.find(u => u.id === receiverId)?.name || 'Unbekannt'} fehlgeschlagen: ${error.message}`);
-        }
+      const { error } = await supabase.rpc('send_money', {
+        sender_id_in: currentUser.id,
+        receiver_id_in: receiverId,
+        amount_in: amountInKnuts,
+        note_in: `${note || ''}|~|${JSON.stringify(amount)}`
+      });
+      
+      if (error) {
+        // If one transaction fails, we stop and report the error.
+        // Note that previous transactions in the loop have already succeeded.
+        // This is not an atomic operation.
+        throw error;
+      }
     }
     
-    // Refresh data after successful transactions
     await refreshData();
   };
-
-  const handleCreateRequest = async (requesteeIds: string[], amount: { g: number; s: number; k: number }, note?: string) => {
-    if (!currentUser) throw new Error("Nicht eingeloggt.");
-    const amountInKnuts = currencyToKnuts({ galleons: amount.g, sickles: amount.s, knuts: amount.k });
-    if (amountInKnuts <= 0) throw new Error("Betrag muss positiv sein.");
-
-    const newRequests = requesteeIds.map(requesteeId => ({
-        requester_id: currentUser.id,
-        requestee_id: requesteeId,
-        amount: amountInKnuts,
-        note: note,
-        amount_breakdown: { g: amount.g, s: amount.s, k: amount.k },
-        status: 'pending',
-    }));
-
-    const { error } = await supabase.from('money_request').insert(newRequests);
-    if (error) throw error;
-    await refreshData();
-  };
-
-  const handleAcceptRequest = async (request: MoneyRequest) => {
-    if (!currentUser) throw new Error("Nicht eingeloggt.");
-    
-    const acceptanceNote = `Angefordert${request.note ? `: ${request.note}` : ''}`;
-    
-    // Fix: Correctly handle the union type for the request amount
-    const amountFromRequest = request.amount_breakdown || knutsToCanonical(request.amount);
-
-    let amountToSend: { g: number; s: number; k: number; };
-
-    if ("galleons" in amountFromRequest) {
-      // It's Currency
-      amountToSend = { g: amountFromRequest.galleons, s: amountFromRequest.sickles, k: amountFromRequest.knuts };
-    } else {
-      // It's { g, s, k }
-      amountToSend = amountFromRequest;
-    }
-    
-    await handleSendMoney([request.requester_id], amountToSend, acceptanceNote);
-
-    const { error } = await supabase
-        .from('money_request')
-        .update({ status: 'accepted' })
-        .eq('id', request.id);
-    if (error) throw error;
-
-    await refreshData();
-  };
-
-  const handleRejectRequest = async (requestId: string) => {
-     const { error } = await supabase
-        .from('money_request')
-        .update({ status: 'rejected' })
-        .eq('id', requestId);
-    if (error) throw error;
-    await refreshData();
-  };
-
 
   const handleUpdateUser = async (userId: string, updates: { name: string; house: House; balance: number }) => {
-    if (!isKing) throw new Error("Nur der King kann Nutzerdaten ändern.");
-
-    const originalUser = users.find(u => u.id === userId);
-    if (!originalUser) throw new Error("Nutzer nicht gefunden.");
-
-    const { error } = await supabase
+    if (!isKing || !currentUser) throw new Error("Keine Berechtigung.");
+    
+    const { data: targetUser, error: fetchError } = await supabase
       .from('users')
-      .update({ name: updates.name, house: updates.house, balance: updates.balance })
-      .eq('id', userId);
+      .select('balance')
+      .eq('id', userId)
+      .single();
+
+    if (fetchError) throw fetchError;
+    if (!targetUser) throw new Error("Benutzer nicht gefunden.");
+    
+    const oldBalance = targetUser.balance;
+
+    const { error } = await supabase.rpc('update_user_balance_and_details', {
+      p_user_id: userId,
+      p_new_balance: updates.balance,
+      p_new_name: updates.name,
+      p_new_house: updates.house,
+      p_king_id: currentUser.id,
+      p_old_balance: oldBalance
+    });
 
     if (error) throw error;
-
-    // Check if balance was changed and log a special transaction if so
-    if (originalUser.balance !== updates.balance && currentUser) {
-        const note = `ADMIN_BALANCE_CHANGE::${currentUser.id}::${userId}::${originalUser.balance}::${updates.balance}`;
-        await supabase.from('transactions').insert({
-            sender_id: currentUser.id, // The King is the "sender" of the change
-            receiver_id: userId,
-            amount: 0, // No actual money transfer, just a log
-            note: note,
-        });
-    }
-
+    
     await refreshData();
   };
 
   const handleSoftDeleteUser = async (userId: string) => {
-    if (!isKing) throw new Error("Nur der King kann Nutzer löschen.");
-    const { error } = await supabase
-        .from('users')
-        .update({ is_deleted: true })
-        .eq('id', userId);
-    if (error) throw error;
-    await refreshData();
+      if (!isKing) throw new Error("Keine Berechtigung.");
+      const { error } = await supabase
+          .from('users')
+          .update({ is_deleted: true })
+          .eq('id', userId);
+
+      if (error) throw error;
+      await refreshData();
   };
 
   const handleRestoreUser = async (userId: string) => {
-    if (!isKing) throw new Error("Nur der King kann Nutzer wiederherstellen.");
-    const { error } = await supabase
-        .from('users')
-        .update({ is_deleted: false })
-        .eq('id', userId);
+      if (!isKing) throw new Error("Keine Berechtigung.");
+      const { error } = await supabase
+          .from('users')
+          .update({ is_deleted: false })
+          .eq('id', userId);
+      if (error) throw error;
+      await refreshData();
+  };
+
+  const handleCreateRequest = async (requesteeIds: string[], amount: { g: number; s: number; k: number }, note?: string) => {
+    if (!currentUser) throw new Error("Benutzer nicht eingeloggt.");
+    
+    // FIX: Map the amount object to the shape expected by currencyToKnuts
+    const amountInKnuts = currencyToKnuts({
+      galleons: amount.g,
+      sickles: amount.s,
+      knuts: amount.k
+    });
+
+    const requests = requesteeIds.map(requesteeId => ({
+      requester_id: currentUser.id,
+      requestee_id: requesteeId,
+      amount: amountInKnuts,
+      note: note,
+      status: 'pending'
+    }));
+    
+    const { error } = await supabase.from('money_requests').insert(requests);
     if (error) throw error;
+
     await refreshData();
   };
   
-  const handleUpdateProfile = async (updates: { name?: string; house?: House; }) => {
-    if (!currentUser) throw new Error("Nicht eingeloggt.");
+  const handleAcceptRequest = async (request: MoneyRequest) => {
+    if (!currentUser) throw new Error("Benutzer nicht eingeloggt.");
+    if (currentUser.balance < request.amount) throw new Error("Nicht genügend Guthaben.");
+
+    // Use the RPC function to handle the transaction and request update atomically
+    const { error } = await supabase.rpc('accept_money_request', {
+      p_request_id: request.id,
+      p_requester_id: request.requester_id,
+      p_requestee_id: request.requestee_id,
+      p_amount: request.amount,
+      p_note: `Anfrage von ${request.requester?.name || 'Unbekannt'}: ${request.note || ''}`
+    });
+
+    if (error) throw error;
     
-    const { error, count } = await supabase
-      .from('users')
-      .update(updates)
-      .eq('id', currentUser.id);
-
-    if (error) {
-        console.error('Supabase update error:', error);
-        throw new Error(`Profil-Update fehlgeschlagen: ${error.message}`);
-    }
-
-    if (count === 0 || count === null) {
-        // This is a common issue with RLS policies where the update fails silently.
-        console.warn('Supabase update affected 0 rows. This might be an RLS policy issue.');
-        throw new Error("Dein Profil konnte nicht gespeichert werden (0 Zeilen aktualisiert). Dies ist ein klassisches Anzeichen für ein Problem mit den Row-Level Security (RLS) Richtlinien in Supabase. Bitte überprüfe Folgendes in deinem Supabase-Projekt:\n1. Ist RLS für die 'users'-Tabelle überhaupt aktiviert?\n2. Existiert eine UPDATE-Richtlinie für die 'authenticated' Rolle?\n3. Lautet die Bedingung für diese Richtlinie 'auth.uid() = id'? (Sowohl für 'USING' als auch für 'WITH CHECK').\nOhne die korrekte UPDATE-Richtlinie blockiert Supabase die Anfrage stillschweigend.");
-    }
-
     await refreshData();
   };
 
-  const handleUpdatePassword = async (newPassword: string) => {
-    const { error } = await supabase.auth.updateUser({ password: newPassword });
+  const handleRejectRequest = async (requestId: string) => {
+    const { error } = await supabase
+      .from('money_requests')
+      .update({ status: 'rejected' })
+      .eq('id', requestId);
+    if (error) throw error;
+    await refreshData();
+  };
+
+  const handleUpdateProfile = async (updates: { name?: string; house?: House; }) => {
+    if (!currentUser) throw new Error("Benutzer nicht eingeloggt.");
+    const { error } = await supabase
+      .from('users')
+      .update(updates)
+      .eq('id', currentUser.id);
+    if (error) throw error;
+    await refreshData();
+  };
+
+  const handleUpdatePassword = async (password: string) => {
+    const { error } = await supabase.auth.updateUser({ password });
     if (error) throw error;
   };
 
@@ -403,62 +359,47 @@ const App: React.FC = () => {
   }
   
   if (connectionError) {
-    return <ConnectionErrorScreen message={connectionError} onRetry={initialLoad} />;
+    return <ConnectionErrorScreen message={connectionError} onRetry={fetchDataWithRetry} />;
+  }
+  
+  if (currentUser?.is_deleted) {
+    return <AccountDeletedScreen />;
   }
 
-  if (currentUser?.is_deleted) {
-      return <AccountDeletedScreen />;
+  if (emailForVerification) {
+    return <OtpScreen email={emailForVerification} onVerify={handleVerifyOtp} onBack={() => setEmailForVerification(null)} error={authError} />;
+  }
+
+  if (!currentUser) {
+    return <LoginScreen onLogin={handleLogin} onRegister={handleRegister} error={authError} />;
   }
 
   return (
-    <>
+    <div className="bg-[#121212] text-white min-h-screen">
       <Header currentUser={currentUser} onLogout={handleLogout} />
-      <main className="min-h-screen">
-         {!session ? (
-            emailForVerification ? (
-                 <OtpScreen 
-                    email={emailForVerification}
-                    onVerify={handleVerifyOtp}
-                    onBack={() => {
-                        setEmailForVerification(null);
-                        setAuthError(null);
-                    }}
-                    error={authError}
-                 />
-            ) : (
-                <LoginScreen
-                    onLogin={handleLogin}
-                    onRegister={handleRegister}
-                    error={authError}
-                />
-            )
-         ) : currentUser ? (
-          <Dashboard
-            currentUser={currentUser}
-            users={users}
-            transactions={transactions}
-            moneyRequests={moneyRequests}
-            onSendMoney={handleSendMoney}
-            isKing={isKing}
-            globalTransactions={globalTransactions}
-            onUpdateUser={handleUpdateUser}
-            onSoftDeleteUser={handleSoftDeleteUser}
-            onRestoreUser={handleRestoreUser}
-            onCreateRequest={handleCreateRequest}
-            onAcceptRequest={handleAcceptRequest}
-            onRejectRequest={handleRejectRequest}
-            onUpdateProfile={handleUpdateProfile}
-            onUpdatePassword={handleUpdatePassword}
-          />
-        ) : (
-            // This state can happen briefly while currentUser is being fetched after session is set.
-            <div className="flex justify-center items-center h-screen">
-                <div className="w-8 h-8 border-4 border-white/20 border-t-white rounded-full animate-spin"></div>
-            </div>
-        )}
+      <main>
+        <Dashboard
+          currentUser={currentUser}
+          users={users}
+          transactions={transactions}
+          moneyRequests={moneyRequests}
+          onSendMoney={handleSendMoney}
+          isKing={isKing}
+          kingEmails={KING_EMAILS}
+          globalTransactions={globalTransactions}
+          onUpdateUser={handleUpdateUser}
+          onSoftDeleteUser={handleSoftDeleteUser}
+          onRestoreUser={handleRestoreUser}
+          onCreateRequest={handleCreateRequest}
+          onAcceptRequest={handleAcceptRequest}
+          onRejectRequest={handleRejectRequest}
+          onUpdateProfile={handleUpdateProfile}
+          onUpdatePassword={handleUpdatePassword}
+        />
       </main>
-    </>
+    </div>
   );
 };
 
+// FIX: Export the App component as a default export.
 export default App;
