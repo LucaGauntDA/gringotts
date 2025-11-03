@@ -1,5 +1,5 @@
 {
-  "name": "Gringotts Digital Bank",
+  "name": "Gringotts",
   "description": "A web application for users to register with a name and house, view their account balance, and send a fictional currency to other users. Admins have special privileges to modify balances. All transactions are logged.",
   "requestFramePermissions": []
 }

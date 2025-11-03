@@ -241,6 +241,7 @@ const App: React.FC = () => {
   const handleUpdateUser = async (userId: string, updates: { name: string; house: House; balance: number }) => {
     if (!isKing || !currentUser) throw new Error("Keine Berechtigung.");
     
+    // 1. Fetch the user's current state to get the old balance for logging
     const { data: targetUser, error: fetchError } = await supabase
       .from('users')
       .select('balance')
@@ -252,16 +253,32 @@ const App: React.FC = () => {
     
     const oldBalance = targetUser.balance;
 
-    const { error } = await supabase.rpc('update_user_balance_and_details', {
-      p_user_id: userId,
-      p_new_balance: updates.balance,
-      p_new_name: updates.name,
-      p_new_house: updates.house,
-      p_king_id: currentUser.id,
-      p_old_balance: oldBalance
-    });
+    // 2. Update the user's details in the 'users' table
+    const { error: updateError } = await supabase
+      .from('users')
+      .update({
+        name: updates.name,
+        house: updates.house,
+        balance: updates.balance,
+      })
+      .eq('id', userId);
 
-    if (error) throw error;
+    if (updateError) throw updateError;
+    
+    // 3. If the balance was changed, create a transaction log entry
+    if (updates.balance !== oldBalance) {
+      const changeAmount = Math.abs(updates.balance - oldBalance);
+      const { error: transactionError } = await supabase
+        .from('transactions')
+        .insert({
+          sender_id: currentUser.id,
+          receiver_id: userId,
+          amount: changeAmount, // Use the absolute change to satisfy the DB constraint
+          note: `ADMIN_BALANCE_CHANGE::${currentUser.id}::${userId}::${oldBalance}::${updates.balance}`
+        });
+
+      if (transactionError) throw transactionError;
+    }
     
     await refreshData();
   };
