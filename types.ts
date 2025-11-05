@@ -52,3 +52,9 @@ export interface MoneyRequest {
   requester?: { id: string, name: string, house: string, email?: string };
   requestee?: { id: string, name: string, house: string, email?: string };
 }
+
+export interface AppNotification {
+  id: number;
+  message: string;
+  type: 'success' | 'error' | 'info';
+}

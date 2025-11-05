@@ -1,5 +1,5 @@
-import React, { useState, useEffect, useCallback } from 'react';
-import type { User, Transaction, MoneyRequest } from './types';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
+import type { User, Transaction, MoneyRequest, AppNotification } from './types';
 import { House } from './types';
 import LoginScreen from './components/LoginScreen';
 import OtpScreen from './components/OtpScreen';
@@ -8,6 +8,7 @@ import Header from './components/Header';
 import LoadingScreen from './components/LoadingScreen';
 import ConnectionErrorScreen from './components/ConnectionErrorScreen';
 import AccountDeletedScreen from './components/AccountDeletedScreen';
+import NotificationCenter from './components/NotificationCenter';
 import { supabase, isSupabaseConfigured } from './supabaseClient';
 import type { AuthSession } from '@supabase/supabase-js';
 import { currencyToKnuts, knutsToCanonical } from './utils';
@@ -27,6 +28,20 @@ const App: React.FC = () => {
   const [emailForVerification, setEmailForVerification] = useState<string | null>(null);
   const [isKing, setIsKing] = useState(false);
   const [globalTransactions, setGlobalTransactions] = useState<Transaction[]>([]);
+  const [notifications, setNotifications] = useState<AppNotification[]>([]);
+
+  const addNotification = useCallback((message: string, type: AppNotification['type']) => {
+    const newNotification: AppNotification = {
+      id: Date.now(),
+      message,
+      type,
+    };
+    setNotifications(prev => [...prev, newNotification]);
+  }, []);
+
+  const removeNotification = (id: number) => {
+    setNotifications(prev => prev.filter(n => n.id !== id));
+  };
 
   const refreshData = useCallback(async () => {
     const { data: { session }, error: sessionError } = await supabase.auth.getSession();
@@ -118,6 +133,13 @@ const App: React.FC = () => {
     }
   }, [refreshData]);
 
+  const currentUserRef = useRef(currentUser);
+  useEffect(() => { currentUserRef.current = currentUser; }, [currentUser]);
+
+  const usersRef = useRef(users);
+  useEffect(() => { usersRef.current = users; }, [users]);
+
+
   useEffect(() => {
     if (!isSupabaseConfigured) {
       setConnectionError("Supabase ist nicht konfiguriert. Bitte trage die Zugangsdaten in 'supabaseClient.ts' ein.");
@@ -129,14 +151,84 @@ const App: React.FC = () => {
 
     const { data: authListener } = supabase.auth.onAuthStateChange((_event, session) => {
       setSession(session);
-      // When auth state changes, refetch all data.
       fetchDataWithRetry();
     });
 
+    const handleNewTransaction = (payload: any) => {
+        const newTx = payload.new as Transaction;
+        const user = currentUserRef.current;
+        if (user && newTx.receiver_id === user.id && !newTx.note?.startsWith('ADMIN_BALANCE_CHANGE')) {
+            const allUsers = usersRef.current;
+            const sender = allUsers.find(u => u.id === newTx.sender_id);
+            const senderName = sender ? sender.name : 'Jemand';
+
+            let amountString = '';
+            const canonical = knutsToCanonical(newTx.amount);
+            amountString = `${canonical.galleons}G, ${canonical.sickles}S, ${canonical.knuts}K`;
+        
+            if (newTx.note?.includes('|~|')) {
+                try {
+                    const parts = newTx.note.split('|~|');
+                    if (parts.length > 1) {
+                        const sentAs = JSON.parse(parts[1]);
+                        amountString = `${sentAs.g}G, ${sentAs.s}S, ${sentAs.k}K`;
+                    }
+                } catch(e) {
+                    console.error("Failed to parse amount from note", e);
+                }
+            }
+            addNotification(`${senderName} hat dir ${amountString} gesendet!`, 'success');
+            refreshData();
+        }
+    };
+
+    const handleMoneyRequestChange = (payload: any) => {
+        const user = currentUserRef.current;
+        if (!user) return;
+
+        if (payload.eventType === 'INSERT') {
+            const newReq = payload.new as MoneyRequest;
+            if (newReq.requestee_id === user.id) {
+                const allUsers = usersRef.current;
+                const requester = allUsers.find(u => u.id === newReq.requester_id);
+                const requesterName = requester ? requester.name : 'Jemand';
+                const canonical = knutsToCanonical(newReq.amount);
+                addNotification(`${requesterName} fordert ${canonical.galleons}G, ${canonical.sickles}S, ${canonical.knuts}K von dir an.`, 'info');
+                refreshData();
+            }
+        } else if (payload.eventType === 'UPDATE') {
+            const updatedReq = payload.new as MoneyRequest;
+            const oldReq = payload.old as MoneyRequest;
+            if (updatedReq.requester_id === user.id && updatedReq.status !== oldReq.status) {
+                const allUsers = usersRef.current;
+                const requestee = allUsers.find(u => u.id === updatedReq.requestee_id);
+                const requesteeName = requestee ? requestee.name : 'Jemand';
+                if (updatedReq.status === 'accepted') {
+                    addNotification(`${requesteeName} hat deine Anfrage akzeptiert.`, 'success');
+                } else if (updatedReq.status === 'rejected') {
+                    addNotification(`${requesteeName} hat deine Anfrage abgelehnt.`, 'error');
+                }
+                refreshData();
+            }
+        }
+    };
+
+    const transactionsChannel = supabase
+        .channel('public:transactions')
+        .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'transactions' }, handleNewTransaction)
+        .subscribe();
+
+    const requestsChannel = supabase
+        .channel('public:money_requests')
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'money_requests' }, handleMoneyRequestChange)
+        .subscribe();
+
     return () => {
+      supabase.removeChannel(transactionsChannel);
+      supabase.removeChannel(requestsChannel);
       authListener.subscription.unsubscribe();
     };
-  }, [fetchDataWithRetry]);
+  }, [fetchDataWithRetry, refreshData, addNotification]);
 
   const handleLogin = async (identifier: string, password: string) => {
     setAuthError(null);
@@ -384,39 +476,4 @@ const App: React.FC = () => {
   }
 
   if (emailForVerification) {
-    return <OtpScreen email={emailForVerification} onVerify={handleVerifyOtp} onBack={() => setEmailForVerification(null)} error={authError} />;
-  }
-
-  if (!currentUser) {
-    return <LoginScreen onLogin={handleLogin} onRegister={handleRegister} error={authError} />;
-  }
-
-  return (
-    <div className="bg-[#121212] text-white min-h-screen">
-      <Header currentUser={currentUser} onLogout={handleLogout} />
-      <main>
-        <Dashboard
-          currentUser={currentUser}
-          users={users}
-          transactions={transactions}
-          moneyRequests={moneyRequests}
-          onSendMoney={handleSendMoney}
-          isKing={isKing}
-          kingEmails={KING_EMAILS}
-          globalTransactions={globalTransactions}
-          onUpdateUser={handleUpdateUser}
-          onSoftDeleteUser={handleSoftDeleteUser}
-          onRestoreUser={handleRestoreUser}
-          onCreateRequest={handleCreateRequest}
-          onAcceptRequest={handleAcceptRequest}
-          onRejectRequest={handleRejectRequest}
-          onUpdateProfile={handleUpdateProfile}
-          onUpdatePassword={handleUpdatePassword}
-        />
-      </main>
-    </div>
-  );
-};
-
-// FIX: Export the App component as a default export.
-export default App;
+    return <OtpScreen email={emailForVerification} onVerify={handleVerifyOtp} onBack

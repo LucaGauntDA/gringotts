@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import type { User, Transaction, Currency, MoneyRequest } from '../types';
 import { House } from '../types';
 import { 
@@ -2370,7 +2370,7 @@ const Dashboard: React.FC<DashboardProps> = ({
   const [activeTab, setActiveTab] = useState('send');
   const [showCurrencyModal, setShowCurrencyModal] = useState(false);
   
-  const [pillStyle, setPillStyle] = useState({});
+  const [pillStyle, setPillStyle] = useState<React.CSSProperties>({});
   const tabContainerRef = useRef<HTMLDivElement>(null);
   const tabRefs = {
     send: useRef<HTMLButtonElement>(null),
@@ -2380,9 +2380,16 @@ const Dashboard: React.FC<DashboardProps> = ({
     admin: useRef<HTMLButtonElement>(null),
   };
 
+  const justDragged = useRef(false);
+  const isDragging = useRef(false);
+  const hasMoved = useRef(false);
+  const dragStartX = useRef(0);
+  const pillStartLeft = useRef(0);
+  const [draggedPillStyle, setDraggedPillStyle] = useState<React.CSSProperties | null>(null);
+
   useEffect(() => {
     const activeTabRef = tabRefs[activeTab as keyof typeof tabRefs];
-    if (activeTabRef.current) {
+    if (activeTabRef.current && !isDragging.current) {
       const { offsetLeft, offsetWidth } = activeTabRef.current;
       setPillStyle({
         left: `${offsetLeft}px`,
@@ -2390,6 +2397,93 @@ const Dashboard: React.FC<DashboardProps> = ({
       });
     }
   }, [activeTab, isKing]);
+
+  const handleDragStart = useCallback((e: React.MouseEvent | React.TouchEvent) => {
+    isDragging.current = true;
+    hasMoved.current = false;
+    const startX = 'touches' in e ? e.touches[0].clientX : e.clientX;
+    dragStartX.current = startX;
+
+    if (pillStyle.left && typeof pillStyle.left === 'string') {
+        pillStartLeft.current = parseFloat(pillStyle.left);
+    }
+  }, [pillStyle.left]);
+
+  const handleDragMove = useCallback((e: React.MouseEvent | React.TouchEvent) => {
+    if (!isDragging.current) return;
+
+    const currentX = 'touches' in e ? e.touches[0].clientX : e.clientX;
+    if (!hasMoved.current) {
+        if (Math.abs(currentX - dragStartX.current) > 5) {
+             hasMoved.current = true;
+        } else {
+            return;
+        }
+    }
+    
+    if ('touches' in e && e.touches.length === 0) return;
+
+    e.preventDefault();
+
+    const deltaX = currentX - dragStartX.current;
+    
+    const container = tabContainerRef.current;
+    if (!container || typeof pillStyle.width !== 'string') return;
+    const pillWidth = parseFloat(pillStyle.width);
+    const maxLeft = container.offsetWidth - pillWidth;
+    
+    let newLeft = pillStartLeft.current + deltaX;
+    newLeft = Math.max(0, Math.min(newLeft, maxLeft));
+
+    setDraggedPillStyle({
+        ...pillStyle,
+        left: `${newLeft}px`,
+        transition: 'none',
+    });
+  }, [pillStyle]);
+
+  const handleDragEnd = useCallback(() => {
+    if (!isDragging.current) return;
+
+    if (hasMoved.current) {
+        if (draggedPillStyle && typeof draggedPillStyle.left === 'string' && typeof draggedPillStyle.width === 'string') {
+            justDragged.current = true;
+            setTimeout(() => { justDragged.current = false; }, 0);
+
+            const pillCenter = parseFloat(draggedPillStyle.left) + (parseFloat(draggedPillStyle.width) / 2);
+            
+            let closestTab: string | null = null;
+            let minDistance = Infinity;
+
+            const availableTabs = ['send', 'request', 'history', 'profile'];
+            if (isKing) {
+                availableTabs.push('admin');
+            }
+
+            availableTabs.forEach((tabName) => {
+                const tabRef = tabRefs[tabName as keyof typeof tabRefs];
+                if (tabRef.current) {
+                    const tabCenter = tabRef.current.offsetLeft + tabRef.current.offsetWidth / 2;
+                    const distance = Math.abs(pillCenter - tabCenter);
+
+                    if (distance < minDistance) {
+                        minDistance = distance;
+                        closestTab = tabName;
+                    }
+                }
+            });
+
+            if (closestTab && closestTab !== activeTab) {
+                setActiveTab(closestTab);
+            }
+        }
+    }
+    
+    isDragging.current = false;
+    hasMoved.current = false;
+    setDraggedPillStyle(null);
+  }, [draggedPillStyle, isKing, activeTab]);
+
 
   const { galleons, sickles, knuts } = knutsToCanonical(currentUser.balance);
 
@@ -2404,7 +2498,10 @@ const Dashboard: React.FC<DashboardProps> = ({
     return (
         <button
           ref={tabRefs[tabName as keyof typeof tabRefs]}
-          onClick={() => setActiveTab(tabName)}
+          onClick={() => {
+            if (justDragged.current) return;
+            setActiveTab(tabName);
+          }}
           className={`relative z-10 flex-1 flex flex-col items-center justify-center gap-1 py-2 px-1 rounded-full text-xs transition-colors duration-300 ${isActive ? `${activeColor} font-semibold` : 'text-white/60 hover:text-white'}`}
           aria-current={isActive}
         >
@@ -3118,10 +3215,20 @@ const Dashboard: React.FC<DashboardProps> = ({
             <p className="text-xs opacity-50">entspricht {currentUser.balance.toLocaleString('de-DE')} Knuts</p>
         </div>
 
-        <div ref={tabContainerRef} className="relative bg-black/30 backdrop-blur-xl rounded-full p-1.5 flex gap-1.5 border border-white/10 mb-8 sticky top-24 z-20">
+        <div 
+          ref={tabContainerRef} 
+          className="relative bg-black/30 backdrop-blur-xl rounded-full p-1.5 flex gap-1.5 border border-white/10 mb-8 sticky top-24 z-20 touch-none"
+          onMouseDown={handleDragStart}
+          onMouseMove={handleDragMove}
+          onMouseUp={handleDragEnd}
+          onMouseLeave={handleDragEnd}
+          onTouchStart={handleDragStart}
+          onTouchMove={handleDragMove}
+          onTouchEnd={handleDragEnd}
+        >
             <div
               className="absolute top-1.5 bottom-1.5 bg-white/10 rounded-full transition-all duration-300 ease-in-out"
-              style={pillStyle}
+              style={draggedPillStyle || pillStyle}
               aria-hidden="true"
             ></div>
             <TabButton tabName="send" label="Senden" icon={SendIcon} />
