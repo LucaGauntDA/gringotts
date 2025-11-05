@@ -476,4 +476,41 @@ const App: React.FC = () => {
   }
 
   if (emailForVerification) {
-    return <OtpScreen email={emailForVerification} onVerify={handleVerifyOtp} onBack
+    return <OtpScreen email={emailForVerification} onVerify={handleVerifyOtp} onBack={() => setEmailForVerification(null)} error={authError} />;
+  }
+
+  if (!currentUser) {
+    return <LoginScreen onLogin={handleLogin} onRegister={handleRegister} error={authError} />;
+  }
+
+  return (
+    <>
+      <div className="bg-gradient-to-br from-[#121212] to-[#1a1a1a] min-h-screen text-white font-sans selection:bg-white/30 selection:text-white">
+        <Header currentUser={currentUser} onLogout={handleLogout} />
+        <main className="relative z-10">
+          <Dashboard
+            currentUser={currentUser}
+            users={users}
+            transactions={transactions}
+            moneyRequests={moneyRequests}
+            onSendMoney={handleSendMoney}
+            isKing={isKing}
+            kingEmails={KING_EMAILS}
+            globalTransactions={globalTransactions}
+            onUpdateUser={handleUpdateUser}
+            onSoftDeleteUser={handleSoftDeleteUser}
+            onRestoreUser={handleRestoreUser}
+            onCreateRequest={handleCreateRequest}
+            onAcceptRequest={handleAcceptRequest}
+            onRejectRequest={handleRejectRequest}
+            onUpdateProfile={handleUpdateProfile}
+            onUpdatePassword={handleUpdatePassword}
+          />
+        </main>
+      </div>
+       <NotificationCenter notifications={notifications} onRemove={removeNotification} />
+    </>
+  );
+};
+
+export default App;
