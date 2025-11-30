@@ -63,9 +63,9 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin, onRegister, error })
       {showInfoModal && (
         <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4" onClick={() => setShowInfoModal(false)}>
             <div className="bg-[#1c1c1c]/80 backdrop-blur-2xl rounded-3xl p-8 border border-white/20 max-w-sm w-full" onClick={e => e.stopPropagation()}>
-                <h3 className="text-xl font-bold mb-4">Warum du deine E-Mail angeben musst</h3>
+                <h3 className="text-xl font-bold mb-4">Datenschutz & E-Mail</h3>
                 <p className="opacity-80 mb-6">
-                    Deine E-Mail-Adresse wird für die Anmeldung benötigt. Bitte gib deine echte E-Mail-Adresse an. Sie wird sicher in <a href="https://supabase.com" target="_blank" rel="noopener noreferrer" className="text-white font-semibold underline">Supabase</a> gespeichert. In der Regel erhältst du keine Bestätigungs-E-Mail. Falls doch, klicke bitte auf den Link darin oder gib den Code in dem dann erscheinenden Fenster ein.
+                    Deine E-Mail-Adresse wird sicher in <a href="https://supabase.com/" target="_blank" rel="noopener noreferrer" className="text-white font-semibold underline">Supabase</a> gespeichert. Das Tool wird von führenden Unternehmen weltweit genutzt und es ist gar nicht so unwahrscheinlich, dass deine E-Mail-Adresse dort schon gespeichert ist. Bei einem Datenleak dort erhältst du natürlich entsprechende Informationen. Ich selbst kann zwar auf die E-Mails zugreifen, werde das aber nicht ohne einzelnes Einverständnis tun. Bei Fragen, kontaktiere mich bitte über WhatsApp.
                 </p>
                 <button onClick={() => setShowInfoModal(false)} className="w-full text-black bg-white hover:bg-gray-200 font-bold rounded-full text-base px-5 text-center h-12">
                     Verstanden!
