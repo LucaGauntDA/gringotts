@@ -1,3 +1,4 @@
+
 import React, { useEffect } from 'react';
 import type { AppNotification } from '../types';
 import { CheckIcon, XIcon, InfoIcon, XMarkIcon } from './icons';
@@ -26,7 +27,7 @@ const Notification: React.FC<NotificationProps> = ({ notification, onRemove }) =
   useEffect(() => {
     const timer = setTimeout(() => {
       onRemove(notification.id);
-    }, 5000); // Auto-dismiss after 5 seconds
+    }, 5000);
 
     return () => {
       clearTimeout(timer);
@@ -37,7 +38,7 @@ const Notification: React.FC<NotificationProps> = ({ notification, onRemove }) =
 
   return (
     <div
-      className={`relative w-full max-w-sm p-4 rounded-2xl border bg-[#1c1c1c]/80 backdrop-blur-xl shadow-lg flex items-start gap-4 animate-fadeIn ${config.style}`}
+      className={`relative w-full max-w-sm p-4 rounded-2xl border bg-[#1c1c1c]/90 backdrop-blur-xl shadow-2xl flex items-start gap-4 animate-fadeIn pointer-events-auto ${config.style}`}
       role="alert"
       aria-live="assertive"
     >
@@ -47,7 +48,7 @@ const Notification: React.FC<NotificationProps> = ({ notification, onRemove }) =
       <p className="flex-grow text-sm font-medium text-white/90">{notification.message}</p>
       <button 
         onClick={() => onRemove(notification.id)} 
-        className="flex-shrink-0 text-white/50 hover:text-white transition-colors"
+        className="flex-shrink-0 text-white/50 hover:text-white transition-colors p-1"
         aria-label="Benachrichtigung schließen"
       >
         <XMarkIcon className="w-5 h-5" />
@@ -63,7 +64,7 @@ interface NotificationCenterProps {
 
 const NotificationCenter: React.FC<NotificationCenterProps> = ({ notifications, onRemove }) => {
   return (
-    <div className="fixed top-28 right-4 z-[100] space-y-3 w-full max-w-sm">
+    <div className="fixed top-28 right-4 z-[100] space-y-3 w-full max-w-sm pointer-events-none flex flex-col items-end">
       {notifications.map(notification => (
         <Notification
           key={notification.id}

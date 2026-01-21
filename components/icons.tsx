@@ -109,6 +109,12 @@ export const CrownIcon = ({ className = 'w-5 h-5' }: { className?: string }) => 
     </svg>
 );
 
+export const TrophyIcon = ({ className = 'w-6 h-6' }: { className?: string }) => (
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className={className}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M16.5 18.75h-9m9 0a3 3 0 013 3h-15a3 3 0 013-3m9 0v-3.375c0-.621-.503-1.125-1.125-1.125h-.871M7.5 18.75v-3.375c0-.621.504-1.125 1.125-1.125h.872m5.007 0H9.497m5.007 0a7.454 7.454 0 01-.982-3.172V9.418c0-1.645-1.065-3.085-2.572-3.46M9.497 5.958c-1.507.375-2.572 1.815-2.572 3.46v3.16c0 1.07-.329 2.078-.982 3.172m9.964 0a4.878 4.878 0 00-1.056-2.527 2.25 2.25 0 00-3.388-.314l-1.666 1.764m-4.708 0l-1.666-1.764a2.25 2.25 0 00-3.388.314 4.878 4.878 0 00-1.056 2.527" />
+    </svg>
+);
+
 // Solid Icons for Tabs
 export const SendIconSolid = ({ className = 'w-6 h-6' }: { className?: string }) => (
     <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className={className}>

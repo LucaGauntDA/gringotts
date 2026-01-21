@@ -58,3 +58,31 @@ export interface AppNotification {
   message: string;
   type: 'success' | 'error' | 'info';
 }
+
+export enum BettingEventStatus {
+  OPEN = 'OPEN',
+  LOCKED = 'LOCKED', // Betting closed, event in progress
+  RESOLVED = 'RESOLVED',
+}
+
+export interface BettingEvent {
+  id: string;
+  title: string;
+  option_a: string;
+  option_b: string;
+  status: BettingEventStatus;
+  winner?: 'A' | 'B' | null;
+  created_at: string;
+  created_by?: string;
+}
+
+export interface Bet {
+  id: string;
+  event_id: string;
+  user_id: string;
+  amount: number; // in Knuts
+  choice: 'A' | 'B';
+  created_at: string;
+  // For UI
+  user?: { id: string, name: string, house: string };
+}

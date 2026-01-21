@@ -64,7 +64,7 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin, onRegister, error })
         <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4" onClick={() => setShowInfoModal(false)}>
             <div className="bg-[#1c1c1c]/80 backdrop-blur-2xl rounded-3xl p-8 border border-white/20 max-w-sm w-full" onClick={e => e.stopPropagation()}>
                 <h3 className="text-xl font-bold mb-4">Datenschutz & E-Mail</h3>
-                <p className="opacity-80 mb-6">
+                <p className="opacity-80 mb-6 leading-relaxed">
                     Deine E-Mail-Adresse wird sicher in <a href="https://supabase.com/" target="_blank" rel="noopener noreferrer" className="text-white font-semibold underline">Supabase</a> gespeichert. Das Tool wird von führenden Unternehmen weltweit genutzt und es ist gar nicht so unwahrscheinlich, dass deine E-Mail-Adresse dort schon gespeichert ist. Bei einem Datenleak dort erhältst du natürlich entsprechende Informationen. Ich selbst kann zwar auf die E-Mails zugreifen, werde das aber nicht ohne einzelnes Einverständnis tun. Bei Fragen, kontaktiere mich bitte über WhatsApp.
                 </p>
                 <button onClick={() => setShowInfoModal(false)} className="w-full text-black bg-white hover:bg-gray-200 font-bold rounded-full text-base px-5 text-center h-12">
@@ -158,7 +158,12 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin, onRegister, error })
               <form onSubmit={handleLogin} className="space-y-6">
                 <h2 className="text-3xl sm:text-[2.25rem] font-bold text-center leading-tight">Einloggen</h2>
                 <div>
-                  <label htmlFor="email-login" className="block mb-2 text-sm font-medium opacity-80">E-Mail</label>
+                  <div className="flex justify-between items-center mb-2">
+                    <label htmlFor="email-login" className="text-sm font-medium opacity-80">E-Mail</label>
+                    <button type="button" onClick={() => setShowInfoModal(true)} aria-label="Informationen zur E-Mail-Nutzung">
+                        <InfoIcon className="w-5 h-5 opacity-70 hover:opacity-100 transition-opacity" />
+                    </button>
+                  </div>
                    <input
                     type="email"
                     id="email-login"

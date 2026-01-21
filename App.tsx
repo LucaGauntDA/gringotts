@@ -1,6 +1,7 @@
+
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import type { User, Transaction, MoneyRequest, AppNotification } from './types';
-import { House } from './types';
+import type { User, Transaction, AppNotification, BettingEvent, Bet } from './types';
+import { House, BettingEventStatus } from './types';
 import LoginScreen from './components/LoginScreen';
 import OtpScreen from './components/OtpScreen';
 import Dashboard from './components/Dashboard';
@@ -20,7 +21,8 @@ const App: React.FC = () => {
   const [session, setSession] = useState<AuthSession | null>(null);
   const [users, setUsers] = useState<User[]>([]);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
-  const [moneyRequests, setMoneyRequests] = useState<MoneyRequest[]>([]);
+  const [bettingEvents, setBettingEvents] = useState<BettingEvent[]>([]);
+  const [bets, setBets] = useState<Bet[]>([]);
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
   const [authError, setAuthError] = useState<string | null>(null);
@@ -55,12 +57,12 @@ const App: React.FC = () => {
         setUsers([]);
         setTransactions([]);
         setGlobalTransactions([]);
-        setMoneyRequests([]);
+        setBettingEvents([]);
+        setBets([]);
         setIsKing(false);
         return;
     }
 
-    // Fetch all users from the new view
     const { data: usersData, error: usersError } = await supabase
         .from('users_with_email')
         .select('*');
@@ -70,7 +72,6 @@ const App: React.FC = () => {
     const currentUserData = usersData?.find(u => u.id === session.user.id) || null;
     
     if (currentUserData?.is_deleted) {
-      // Set current user with a flag to show the deleted screen, but don't let them access dashboard
       setCurrentUser({ ...currentUserData, is_deleted: true });
       return;
     }
@@ -84,15 +85,69 @@ const App: React.FC = () => {
             .or(`sender_id.eq.${currentUserData.id},receiver_id.eq.${currentUserData.id}`)
             .order('created_at', { ascending: false });
         if (transError) throw transError;
-        setTransactions(transData || []);
 
-        const { data: requestsData, error: requestsError } = await supabase
-            .from('money_requests')
-            .select('*, requester:users!requester_id(id, name, house), requestee:users!requestee_id(id, name, house)')
-            .or(`requester_id.eq.${currentUserData.id},requestee_id.eq.${currentUserData.id}`)
-            .order('created_at', { ascending: false });
-        if (requestsError) throw requestsError;
-        setMoneyRequests(requestsData || []);
+        const filteredTrans = transData?.filter(t => {
+            const isAdminChange = t.note?.startsWith('ADMIN_BALANCE_CHANGE');
+            if (isAdminChange) {
+                return t.receiver_id === currentUserData.id;
+            }
+            return true;
+        }) || [];
+        
+        setTransactions(filteredTrans);
+
+        try {
+            const { data: eventsData, error: eventsError } = await supabase
+                .from('betting_events')
+                .select('*')
+                .order('created_at', { ascending: false });
+            
+            if (eventsError) {
+                console.warn("Betting events could not be loaded:", eventsError.message);
+                setBettingEvents([]);
+            } else {
+                setBettingEvents(eventsData || []);
+            }
+        } catch (e) {
+            console.warn("Betting events fetch exception:", e);
+            setBettingEvents([]);
+        }
+
+        try {
+            if (userIsKing) {
+                const { data: rpcBets, error: rpcError } = await supabase.rpc('get_admin_bets_v2');
+                if (!rpcError && rpcBets) {
+                    const mappedBets: Bet[] = rpcBets.map((b: any) => ({
+                        id: b.bet_id,
+                        event_id: b.event_id,
+                        user_id: b.user_id,
+                        amount: b.amount,
+                        choice: b.choice,
+                        created_at: b.created_at,
+                        user: {
+                            id: b.user_id,
+                            name: b.user_name,
+                            house: b.user_house
+                        }
+                    }));
+                    setBets(mappedBets);
+                } else {
+                    const { data: betsData, error: betsError } = await supabase
+                        .from('bets')
+                        .select('*, user:users!user_id(id, name, house)');
+                    if (!betsError) setBets(betsData || []);
+                }
+            } else {
+                const { data: betsData, error: betsError } = await supabase
+                    .from('bets')
+                    .select('*, user:users!user_id(id, name, house)')
+                    .eq('user_id', currentUserData.id);
+                if (!betsError) setBets(betsData || []);
+            }
+        } catch (e) {
+             console.warn("Bets fetch exception:", e);
+             setBets([]);
+        }
     }
 
     if (userIsKing) {
@@ -112,21 +167,8 @@ const App: React.FC = () => {
       await refreshData();
     } catch (error: unknown) {
       console.error("Connection error:", error);
-      let errorMessage = 'Verbindung fehlgeschlagen. Bitte prüfe deine Internetverbindung und versuche es erneut.';
-      
-      if (error instanceof Error) {
-        errorMessage = error.message;
-      } else if (typeof error === 'string') {
-        errorMessage = error;
-      } else if (error && typeof error === 'object' && 'message' in error && typeof (error as any).message === 'string') {
-        errorMessage = (error as any).message;
-      }
-      
-      // Prevent "[object Object]" from ever being displayed
-      if (errorMessage === '[object Object]') {
-          errorMessage = 'Ein unbekannter Fehler ist aufgetreten. Bitte versuche es später erneut.';
-      }
-      
+      let errorMessage = 'Verbindung fehlgeschlagen.';
+      if (error instanceof Error) errorMessage = error.message;
       setConnectionError(errorMessage);
     } finally {
       setLoading(false);
@@ -142,7 +184,7 @@ const App: React.FC = () => {
 
   useEffect(() => {
     if (!isSupabaseConfigured) {
-      setConnectionError("Supabase ist nicht konfiguriert. Bitte trage die Zugangsdaten in 'supabaseClient.ts' ein.");
+      setConnectionError("Supabase ist nicht konfiguriert.");
       setLoading(false);
       return;
     }
@@ -161,338 +203,177 @@ const App: React.FC = () => {
             const allUsers = usersRef.current;
             const sender = allUsers.find(u => u.id === newTx.sender_id);
             const senderName = sender ? sender.name : 'Jemand';
-
-            let amountString = '';
             const canonical = knutsToCanonical(newTx.amount);
-            amountString = `${canonical.galleons}G, ${canonical.sickles}S, ${canonical.knuts}K`;
-        
-            if (newTx.note?.includes('|~|')) {
-                try {
-                    const parts = newTx.note.split('|~|');
-                    if (parts.length > 1) {
-                        const sentAs = JSON.parse(parts[1]);
-                        amountString = `${sentAs.g}G, ${sentAs.s}S, ${sentAs.k}K`;
-                    }
-                } catch(e) {
-                    console.error("Failed to parse amount from note", e);
-                }
-            }
-            addNotification(`${senderName} hat dir ${amountString} gesendet!`, 'success');
+            addNotification(`${senderName} hat dir ${canonical.galleons}G gesendet!`, 'success');
             refreshData();
         }
     };
 
-    const handleMoneyRequestChange = (payload: any) => {
-        const user = currentUserRef.current;
-        if (!user) return;
-
-        if (payload.eventType === 'INSERT') {
-            const newReq = payload.new as MoneyRequest;
-            if (newReq.requestee_id === user.id) {
-                const allUsers = usersRef.current;
-                const requester = allUsers.find(u => u.id === newReq.requester_id);
-                const requesterName = requester ? requester.name : 'Jemand';
-                const canonical = knutsToCanonical(newReq.amount);
-                addNotification(`${requesterName} fordert ${canonical.galleons}G, ${canonical.sickles}S, ${canonical.knuts}K von dir an.`, 'info');
-                refreshData();
-            }
-        } else if (payload.eventType === 'UPDATE') {
-            const updatedReq = payload.new as MoneyRequest;
-            const oldReq = payload.old as MoneyRequest;
-            if (updatedReq.requester_id === user.id && updatedReq.status !== oldReq.status) {
-                const allUsers = usersRef.current;
-                const requestee = allUsers.find(u => u.id === updatedReq.requestee_id);
-                const requesteeName = requestee ? requestee.name : 'Jemand';
-                if (updatedReq.status === 'accepted') {
-                    addNotification(`${requesteeName} hat deine Anfrage akzeptiert.`, 'success');
-                } else if (updatedReq.status === 'rejected') {
-                    addNotification(`${requesteeName} hat deine Anfrage abgelehnt.`, 'error');
-                }
-                refreshData();
-            }
-        }
-    };
-
-    const transactionsChannel = supabase
-        .channel('public:transactions')
-        .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'transactions' }, handleNewTransaction)
-        .subscribe();
-
-    const requestsChannel = supabase
-        .channel('public:money_requests')
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'money_requests' }, handleMoneyRequestChange)
-        .subscribe();
+    const transactionsChannel = supabase.channel('public:transactions').on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'transactions' }, handleNewTransaction).subscribe();
 
     return () => {
       supabase.removeChannel(transactionsChannel);
-      supabase.removeChannel(requestsChannel);
       authListener.subscription.unsubscribe();
     };
   }, [fetchDataWithRetry, refreshData, addNotification]);
 
   const handleLogin = async (identifier: string, password: string) => {
     setAuthError(null);
-    const { error } = await supabase.auth.signInWithPassword({
-      email: identifier,
-      password: password,
-    });
+    const { error } = await supabase.auth.signInWithPassword({ email: identifier, password });
     if (error) setAuthError(error.message);
   };
 
   const handleRegister = async (name: string, house: House, password: string, email: string) => {
     setAuthError(null);
-    const { data, error } = await supabase.auth.signUp({
-      email,
-      password,
-      options: {
-        data: {
-          name: name,
-          house: house,
-          balance: 0,
-        },
-      },
-    });
-
-    if (error) {
-      setAuthError(error.message);
-    } else if (data.user && !data.session) {
-      // User created, but needs email verification
-      setEmailForVerification(email);
-    }
+    const { data, error } = await supabase.auth.signUp({ email, password, options: { data: { name, house, balance: 0 } } });
+    if (error) setAuthError(error.message);
+    else if (data.user && !data.session) setEmailForVerification(email);
   };
   
   const handleVerifyOtp = async (email: string, token: string) => {
     setAuthError(null);
-    const { error } = await supabase.auth.verifyOtp({
-      email,
-      token,
-      type: 'signup'
-    });
-    if (error) {
-      setAuthError(error.message);
-    } else {
-      setEmailForVerification(null);
-      // The onAuthStateChange listener will handle fetching data
-    }
+    const { error } = await supabase.auth.verifyOtp({ email, token, type: 'signup' });
+    if (error) setAuthError(error.message);
+    else setEmailForVerification(null);
   };
 
   const handleLogout = async () => {
     setLoading(true);
-    const { error } = await supabase.auth.signOut();
-    if (error) {
-      setAuthError(error.message);
-      setLoading(false);
-    } else {
-      // Clear all state on logout
-      setSession(null);
-      setCurrentUser(null);
-      setUsers([]);
-      setTransactions([]);
-      setMoneyRequests([]);
-      setGlobalTransactions([]);
-      setIsKing(false);
-      setLoading(false);
-    }
+    await supabase.auth.signOut();
+    setSession(null);
+    setCurrentUser(null);
+    setIsKing(false);
+    setLoading(false);
   };
   
   const handleSendMoney = async (receiverIds: string[], amount: { g: number; s: number; k: number }, note?: string) => {
     if (!currentUser) throw new Error("Benutzer nicht eingeloggt.");
-    
-    const amountInKnuts = currencyToKnuts({
-      galleons: amount.g,
-      sickles: amount.s,
-      knuts: amount.k
-    });
+    const amountInKnuts = currencyToKnuts({ galleons: amount.g, sickles: amount.s, knuts: amount.k });
     const totalAmount = amountInKnuts * receiverIds.length;
-    
-    if (currentUser.balance < totalAmount) {
-      throw new Error("Nicht genügend Guthaben.");
-    }
-
-    // The function 'send_money_to_multiple' does not exist in the database.
-    // We will call the existing 'send_money' function for each receiver individually.
+    if (currentUser.balance < totalAmount) throw new Error("Nicht genügend Guthaben.");
     for (const receiverId of receiverIds) {
-      const { error } = await supabase.rpc('send_money', {
-        sender_id_in: currentUser.id,
-        receiver_id_in: receiverId,
-        amount_in: amountInKnuts,
-        note_in: `${note || ''}|~|${JSON.stringify(amount)}`
-      });
-      
-      if (error) {
-        // If one transaction fails, we stop and report the error.
-        // Note that previous transactions in the loop have already succeeded.
-        // This is not an atomic operation.
-        throw error;
-      }
+      const { error } = await supabase.rpc('send_money', { sender_id_in: currentUser.id, receiver_id_in: receiverId, amount_in: amountInKnuts, note_in: `${note || ''}|~|${JSON.stringify(amount)}` });
+      if (error) throw error;
     }
-    
     await refreshData();
   };
 
   const handleUpdateUser = async (userId: string, updates: { name: string; house: House; balance: number }) => {
     if (!isKing || !currentUser) throw new Error("Keine Berechtigung.");
     
-    // 1. Fetch the user's current state to get the old balance for logging
-    const { data: targetUser, error: fetchError } = await supabase
-      .from('users')
-      .select('balance')
-      .eq('id', userId)
-      .single();
+    const { data: targetUser } = await supabase.from('users').select('balance, name').eq('id', userId).single();
+    if (!targetUser) throw new Error("Nutzer nicht gefunden.");
 
-    if (fetchError) throw fetchError;
-    if (!targetUser) throw new Error("Benutzer nicht gefunden.");
-    
     const oldBalance = targetUser.balance;
+    const newBalance = updates.balance;
+    const diff = newBalance - oldBalance;
 
-    // 2. Update the user's details in the 'users' table
-    const { error: updateError } = await supabase
-      .from('users')
-      .update({
-        name: updates.name,
-        house: updates.house,
-        balance: updates.balance,
-      })
-      .eq('id', userId);
-
-    if (updateError) throw updateError;
-    
-    // 3. If the balance was changed, create a transaction log entry
-    if (updates.balance !== oldBalance) {
-      const changeAmount = Math.abs(updates.balance - oldBalance);
-      const { error: transactionError } = await supabase
-        .from('transactions')
-        .insert({
-          sender_id: currentUser.id,
-          receiver_id: userId,
-          amount: changeAmount, // Use the absolute change to satisfy the DB constraint
-          note: `ADMIN_BALANCE_CHANGE::${currentUser.id}::${userId}::${oldBalance}::${updates.balance}`
+    if (diff !== 0) {
+        const adminName = currentUser.name;
+        const targetName = targetUser.name;
+        // ADMIN_BALANCE_CHANGE_V3: Admin|Target|Old|New|Note
+        const note = `ADMIN_BALANCE_CHANGE_V3: ${adminName}|${targetName}|${oldBalance}|${newBalance}|Manuelle Anpassung`;
+        
+        await supabase.from('transactions').insert({
+            sender_id: currentUser.id,
+            receiver_id: userId,
+            amount: Math.abs(diff),
+            note: note
         });
-
-      if (transactionError) throw transactionError;
     }
+
+    const { error: updateError } = await supabase.from('users').update({ name: updates.name, house: updates.house, balance: updates.balance }).eq('id', userId);
+    if (updateError) throw updateError;
     
     await refreshData();
   };
 
   const handleSoftDeleteUser = async (userId: string) => {
       if (!isKing) throw new Error("Keine Berechtigung.");
-      const { error } = await supabase
-          .from('users')
-          .update({ is_deleted: true })
-          .eq('id', userId);
-
-      if (error) throw error;
+      await supabase.from('users').update({ is_deleted: true }).eq('id', userId);
       await refreshData();
   };
 
   const handleRestoreUser = async (userId: string) => {
       if (!isKing) throw new Error("Keine Berechtigung.");
-      const { error } = await supabase
-          .from('users')
-          .update({ is_deleted: false })
-          .eq('id', userId);
-      if (error) throw error;
+      await supabase.from('users').update({ is_deleted: false }).eq('id', userId);
       await refreshData();
-  };
-
-  const handleCreateRequest = async (requesteeIds: string[], amount: { g: number; s: number; k: number }, note?: string) => {
-    if (!currentUser) throw new Error("Benutzer nicht eingeloggt.");
-    
-    // FIX: Map the amount object to the shape expected by currencyToKnuts
-    const amountInKnuts = currencyToKnuts({
-      galleons: amount.g,
-      sickles: amount.s,
-      knuts: amount.k
-    });
-
-    const requests = requesteeIds.map(requesteeId => ({
-      requester_id: currentUser.id,
-      requestee_id: requesteeId,
-      amount: amountInKnuts,
-      note: note,
-      status: 'pending'
-    }));
-    
-    const { error } = await supabase.from('money_requests').insert(requests);
-    if (error) throw error;
-
-    await refreshData();
-  };
-  
-  const handleAcceptRequest = async (request: MoneyRequest) => {
-    if (!currentUser) throw new Error("Benutzer nicht eingeloggt.");
-    if (currentUser.balance < request.amount) throw new Error("Nicht genügend Guthaben.");
-
-    // Use the RPC function to handle the transaction and request update atomically
-    const { error } = await supabase.rpc('accept_money_request', {
-      p_request_id: request.id,
-      p_requester_id: request.requester_id,
-      p_requestee_id: request.requestee_id,
-      p_amount: request.amount,
-      p_note: `Anfrage von ${request.requester?.name || 'Unbekannt'}: ${request.note || ''}`
-    });
-
-    if (error) throw error;
-    
-    await refreshData();
-  };
-
-  const handleRejectRequest = async (requestId: string) => {
-    const { error } = await supabase
-      .from('money_requests')
-      .update({ status: 'rejected' })
-      .eq('id', requestId);
-    if (error) throw error;
-    await refreshData();
   };
 
   const handleUpdateProfile = async (updates: { name?: string; house?: House; }) => {
     if (!currentUser) throw new Error("Benutzer nicht eingeloggt.");
-    const { error } = await supabase
-      .from('users')
-      .update(updates)
-      .eq('id', currentUser.id);
-    if (error) throw error;
+    await supabase.from('users').update(updates).eq('id', currentUser.id);
     await refreshData();
   };
 
   const handleUpdatePassword = async (password: string) => {
-    const { error } = await supabase.auth.updateUser({ password });
-    if (error) throw error;
+    await supabase.auth.updateUser({ password });
   };
 
+  const handleCreateEvent = async (title: string, optionA: string, optionB: string) => {
+      if (!currentUser || !isKing) throw new Error("Keine Berechtigung.");
+      await supabase.from('betting_events').insert({ title, option_a: optionA, option_b: optionB, status: BettingEventStatus.OPEN, created_by: currentUser.id });
+      await refreshData();
+  };
 
-  if (loading) {
-    return <LoadingScreen />;
-  }
-  
-  if (connectionError) {
-    return <ConnectionErrorScreen message={connectionError} onRetry={fetchDataWithRetry} />;
-  }
-  
-  if (currentUser?.is_deleted) {
-    return <AccountDeletedScreen />;
-  }
+  const handlePlaceBet = async (eventId: string, amount: { g: number; s: number; k: number }, choice: 'A' | 'B') => {
+      if (!currentUser) throw new Error("Bitte einloggen.");
+      const amountInKnuts = currencyToKnuts({ galleons: amount.g, sickles: amount.s, knuts: amount.k });
+      
+      // 1. Die Wette im System verbuchen (Logik-RPC)
+      const { error } = await supabase.rpc('place_bet', { p_event_id: eventId, p_user_id: currentUser.id, p_amount: amountInKnuts, p_choice: choice });
+      if (error) throw error;
 
-  if (emailForVerification) {
-    return <OtpScreen email={emailForVerification} onVerify={handleVerifyOtp} onBack={() => setEmailForVerification(null)} error={authError} />;
-  }
+      // 2. Transaktion manuell loggen, damit der Nutzer sie im Verlauf sieht
+      const event = bettingEvents.find(e => e.id === eventId);
+      const choiceLabel = choice === 'A' ? event?.option_a : event?.option_b;
+      
+      // Empfänger ist das Gringotts-System (erster Admin als Stellvertreter)
+      const systemAdmin = users.find(u => KING_EMAILS.includes(u.email || '')) || currentUser;
 
-  if (!currentUser) {
-    return <LoginScreen onLogin={handleLogin} onRegister={handleRegister} error={authError} />;
-  }
+      await supabase.from('transactions').insert({
+          sender_id: currentUser.id,
+          receiver_id: systemAdmin.id,
+          amount: amountInKnuts,
+          note: `Wetteinsatz: ${event?.title || 'Wette'} | Tipp: ${choiceLabel}`
+      });
+
+      await refreshData();
+  };
+
+  const handleToggleEventStatus = async (eventId: string, newStatus: BettingEventStatus) => {
+    if (!currentUser || !isKing) return;
+    await supabase.rpc('toggle_betting_event_status', { p_event_id: eventId, p_status: newStatus });
+    await refreshData();
+  };
+
+  const handleResolveEvent = async (eventId: string, winner: 'A' | 'B') => {
+    if (!currentUser || !isKing) return;
+    await supabase.rpc('resolve_betting_event', { p_event_id: eventId, p_winner: winner, p_admin_id: currentUser.id });
+    await refreshData();
+  };
+
+  const handleDeleteEvent = async (eventId: string) => {
+    if (!currentUser || !isKing) return;
+    await supabase.rpc('delete_betting_event', { p_event_id: eventId });
+    await refreshData();
+  };
+
+  if (loading) return <LoadingScreen />;
+  if (connectionError) return <ConnectionErrorScreen message={connectionError} onRetry={fetchDataWithRetry} />;
+  if (currentUser?.is_deleted) return <AccountDeletedScreen />;
+  if (emailForVerification) return <OtpScreen email={emailForVerification} onVerify={handleVerifyOtp} onBack={() => setEmailForVerification(null)} error={authError} />;
+  if (!currentUser) return <LoginScreen onLogin={handleLogin} onRegister={handleRegister} error={authError} />;
 
   return (
     <>
       <div className="bg-gradient-to-br from-[#121212] to-[#1a1a1a] min-h-screen text-white font-sans selection:bg-white/30 selection:text-white">
         <Header currentUser={currentUser} onLogout={handleLogout} />
-        <main className="relative z-10">
+        <main className="relative">
           <Dashboard
             currentUser={currentUser}
             users={users}
             transactions={transactions}
-            moneyRequests={moneyRequests}
             onSendMoney={handleSendMoney}
             isKing={isKing}
             kingEmails={KING_EMAILS}
@@ -500,11 +381,15 @@ const App: React.FC = () => {
             onUpdateUser={handleUpdateUser}
             onSoftDeleteUser={handleSoftDeleteUser}
             onRestoreUser={handleRestoreUser}
-            onCreateRequest={handleCreateRequest}
-            onAcceptRequest={handleAcceptRequest}
-            onRejectRequest={handleRejectRequest}
             onUpdateProfile={handleUpdateProfile}
             onUpdatePassword={handleUpdatePassword}
+            bettingEvents={bettingEvents}
+            bets={bets}
+            onPlaceBet={handlePlaceBet}
+            onCreateEvent={handleCreateEvent}
+            onResolveEvent={handleResolveEvent}
+            onToggleEventStatus={handleToggleEventStatus}
+            onDeleteEvent={handleDeleteEvent}
           />
         </main>
       </div>
