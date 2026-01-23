@@ -1,3 +1,4 @@
+
 import React from 'react';
 import type { User } from '../types';
 import { LogoutIcon } from './icons';
@@ -12,6 +13,7 @@ const houseColors: { [key: string]: string } = {
   Hufflepuff: 'border-yellow-400 text-yellow-300',
   Ravenclaw: 'border-blue-600 text-blue-400',
   Slytherin: 'border-green-600 text-green-400',
+  Niffler: 'border-yellow-500 text-yellow-500 font-black tracking-tighter shadow-[0_0_15px_rgba(212,175,55,0.4)]',
 };
 
 const houseBgColors: { [key: string]: string } = {
@@ -19,6 +21,7 @@ const houseBgColors: { [key: string]: string } = {
   Hufflepuff: 'bg-yellow-800',
   Ravenclaw: 'bg-blue-900',
   Slytherin: 'bg-green-900',
+  Niffler: 'bg-gradient-to-br from-[#d4af37] to-[#8a6d3b]',
 };
 
 const Header: React.FC<HeaderProps> = ({ currentUser, onLogout }) => {
@@ -30,10 +33,12 @@ const Header: React.FC<HeaderProps> = ({ currentUser, onLogout }) => {
     return name.substring(0, 2).toUpperCase();
   };
 
+  const isNiffler = currentUser?.house === 'Niffler';
+
   return (
     <header className="bg-[#121212]/80 backdrop-blur-xl p-4 border-b border-white/10 fixed top-0 left-0 right-0 z-30">
       <div className="container mx-auto flex justify-between items-center">
-        <h1 className="text-[2rem] md:text-[3.25rem] font-black tracking-wider uppercase">
+        <h1 className={`text-[2rem] md:text-[3.25rem] font-black tracking-wider uppercase ${isNiffler ? 'niffler-gold' : ''}`}>
           Gringotts
         </h1>
         {currentUser && (
@@ -45,7 +50,7 @@ const Header: React.FC<HeaderProps> = ({ currentUser, onLogout }) => {
               </p>
             </div>
 
-            <div className={`w-12 h-12 rounded-full flex items-center justify-center font-bold text-lg border-2 border-white/50 ${houseBgColors[currentUser.house]}`}>
+            <div className={`w-12 h-12 rounded-full flex items-center justify-center font-bold text-lg border-2 border-white/50 ${houseBgColors[currentUser.house]} ${isNiffler ? 'animate-pulse' : ''}`}>
               {getInitials(currentUser.name)}
             </div>
 

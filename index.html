@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="de">
 <head>
@@ -30,6 +31,35 @@
     }
     ::-webkit-scrollbar-thumb:hover {
       background: rgba(255, 255, 255, 0.3);
+    }
+
+    @keyframes nifflerShimmer {
+      0% { background-position: -200% 0; }
+      100% { background-position: 200% 0; }
+    }
+    .niffler-gold {
+      background: linear-gradient(90deg, #d4af37 25%, #fff7d6 50%, #d4af37 75%);
+      background-size: 200% auto;
+      animation: nifflerShimmer 3s linear infinite;
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+    .niffler-border {
+      position: relative;
+    }
+    .niffler-border::before {
+      content: "";
+      position: absolute;
+      inset: -2px;
+      border-radius: inherit;
+      padding: 2px;
+      background: linear-gradient(90deg, #d4af37, #fff7d6, #d4af37);
+      background-size: 200% auto;
+      animation: nifflerShimmer 3s linear infinite;
+      -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+      -webkit-mask-composite: xor;
+      mask-composite: exclude;
+      pointer-events: none;
     }
   </style>
 

@@ -1,3 +1,4 @@
+
 import React, { useState } from 'react';
 import { House } from '../types';
 import { InfoIcon, EyeIcon, EyeSlashIcon } from './icons';
@@ -13,6 +14,7 @@ const houseDetails = {
     [House.Slytherin]: { color: "border-green-500", label: "Slytherin" },
     [House.Hufflepuff]: { color: "border-yellow-400", label: "Hufflepuff" },
     [House.Ravenclaw]: { color: "border-blue-500", label: "Ravenclaw" },
+    [House.Niffler]: { color: "border-yellow-600", label: "Niffler" },
 }
 
 const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin, onRegister, error }) => {
@@ -27,15 +29,24 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin, onRegister, error })
   const [localError, setLocalError] = useState('');
   const [showInfoModal, setShowInfoModal] = useState(false);
 
+  const isNifflerName = name.trim() === 'Niffler';
+
   const handleRegister = (e: React.FormEvent) => {
     e.preventDefault();
     setLocalError('');
-    if (!house) {
+    
+    let finalHouse = house;
+    if (isNifflerName) {
+      finalHouse = House.Niffler;
+    }
+
+    if (!finalHouse) {
       setLocalError('Bitte wähle ein Haus aus.');
       return;
     }
+
     if (name && password && email) {
-      onRegister(name, house, password, email);
+      onRegister(name, finalHouse, password, email);
     }
   };
 
@@ -133,16 +144,27 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin, onRegister, error })
                     </button>
                   </div>
                 </div>
-                <div>
-                  <label className="block mb-2 text-sm font-medium opacity-80">Haus</label>
-                  <div className="grid grid-cols-2 gap-4">
-                    {Object.values(House).map((h) => (
-                      <button type="button" key={h} onClick={() => setHouse(h)} className={`p-4 rounded-2xl border-2 transition-all duration-300 text-center font-bold ${house === h ? `${houseDetails[h].color} bg-white/20 shadow-lg` : 'border-transparent bg-white/5 hover:bg-white/10'}`}>
-                          {houseDetails[h].label}
-                      </button>
-                    ))}
+                
+                {!isNifflerName && (
+                  <div className="animate-fadeIn">
+                    <label className="block mb-2 text-sm font-medium opacity-80">Haus</label>
+                    <div className="grid grid-cols-2 gap-4">
+                      {Object.values(House).filter(h => h !== House.Niffler).map((h) => (
+                        <button type="button" key={h} onClick={() => setHouse(h)} className={`p-4 rounded-2xl border-2 transition-all duration-300 text-center font-bold ${house === h ? `${houseDetails[h].color} bg-white/20 shadow-lg` : 'border-transparent bg-white/5 hover:bg-white/10'}`}>
+                            {houseDetails[h].label}
+                        </button>
+                      ))}
+                    </div>
                   </div>
-                </div>
+                )}
+
+                {isNifflerName && (
+                  <div className="bg-yellow-500/10 border border-yellow-500/30 p-4 rounded-2xl text-center animate-fadeIn">
+                    <p className="text-yellow-500 font-black uppercase tracking-widest text-xs mb-1">Status: Niffler erkannt</p>
+                    <p className="text-[10px] opacity-60">Haus-Wahl wird für dich übersprungen, kleiner Dieb.</p>
+                  </div>
+                )}
+
                 {(localError || error) && <p className="text-red-400 text-sm text-center">{localError || error}</p>}
                 <button type="submit" className="w-full text-black bg-white hover:bg-gray-200 focus:ring-4 focus:outline-none focus:ring-gray-300 font-bold rounded-full text-base px-5 text-center transition-all duration-300 h-[3.75rem] hover:scale-[1.02] active:scale-[0.98]">
                   Registrieren
