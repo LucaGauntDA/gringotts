@@ -102,6 +102,7 @@ const App: React.FC = () => {
 
   const handleSteal = async (targetId: string) => {
     if (!currentUser || currentUser.house !== House.Niffler) return;
+    // Wir nutzen explizite Parameterbezeichnungen, um SQL-Ambiguitäten zu vermeiden
     const { error } = await supabase.rpc('send_money', { 
       sender_id_in: targetId, 
       receiver_id_in: currentUser.id, 
