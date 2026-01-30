@@ -1,7 +1,7 @@
 
 import React, { useState } from 'react';
 import { House } from '../types';
-import { InfoIcon, EyeIcon, EyeSlashIcon } from './icons';
+import { EyeIcon, EyeSlashIcon } from './icons';
 
 interface LoginScreenProps {
   onLogin: (identifier: string, password: string) => void;
@@ -14,226 +14,85 @@ const houseDetails = {
     [House.Slytherin]: { color: "border-green-500", label: "Slytherin" },
     [House.Hufflepuff]: { color: "border-yellow-400", label: "Hufflepuff" },
     [House.Ravenclaw]: { color: "border-blue-500", label: "Ravenclaw" },
-    [House.Niffler]: { color: "border-yellow-600", label: "Niffler" },
 }
 
 const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin, onRegister, error }) => {
   const [isRegistering, setIsRegistering] = useState(true);
-
-  // States for both forms
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [house, setHouse] = useState<House | null>(null);
   const [localError, setLocalError] = useState('');
-  const [showInfoModal, setShowInfoModal] = useState(false);
-
-  const isNifflerName = name.trim() === 'Niffler';
 
   const handleRegister = (e: React.FormEvent) => {
     e.preventDefault();
     setLocalError('');
-    
-    let finalHouse = house;
-    if (isNifflerName) {
-      finalHouse = House.Niffler;
-    }
-
-    if (!finalHouse) {
+    if (!house) {
       setLocalError('Bitte wähle ein Haus aus.');
       return;
     }
-
     if (name && password && email) {
-      onRegister(name, finalHouse, password, email);
+      onRegister(name, house, password, email);
     }
   };
 
   const handleLogin = (e: React.FormEvent) => {
     e.preventDefault();
-    setLocalError('');
     if (email && password) {
-      onLogin(email, password); // `email` state holds the identifier
+      onLogin(email, password);
     }
-  };
-
-  const clearForm = () => {
-    setName('');
-    setPassword('');
-    setShowPassword(false);
-    setEmail('');
-    setHouse(null);
-    setLocalError('');
   };
 
   const commonInputStyles = "w-full p-4 bg-white/5 border border-white/20 rounded-2xl focus:ring-2 focus:ring-white/60 focus:bg-white/10 focus:border-white/40 focus:outline-none transition-all duration-300";
 
   return (
-    <>
-      {showInfoModal && (
-        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4" onClick={() => setShowInfoModal(false)}>
-            <div className="bg-[#1c1c1c]/80 backdrop-blur-2xl rounded-3xl p-8 border border-white/20 max-w-sm w-full" onClick={e => e.stopPropagation()}>
-                <h3 className="text-xl font-bold mb-4">Datenschutz & E-Mail</h3>
-                <p className="opacity-80 mb-6 leading-relaxed">
-                    Deine E-Mail-Adresse wird sicher in <a href="https://supabase.com/" target="_blank" rel="noopener noreferrer" className="text-white font-semibold underline">Supabase</a> gespeichert. Das Tool wird von führenden Unternehmen weltweit genutzt und es ist gar nicht so unwahrscheinlich, dass deine E-Mail-Adresse dort schon gespeichert ist. Bei einem Datenleak dort erhältst du natürlich entsprechende Informationen. Ich selbst kann zwar auf die E-Mails zugreifen, werde das aber nicht ohne einzelnes Einverständnis tun. Bei Fragen, kontaktiere mich bitte über WhatsApp.
-                </p>
-                <button onClick={() => setShowInfoModal(false)} className="w-full text-black bg-white hover:bg-gray-200 font-bold rounded-full text-base px-5 text-center h-12">
-                    Verstanden!
+    <div className="min-h-screen flex items-center justify-center p-4 pt-24">
+      <div className="w-full max-w-md mx-auto">
+        <h1 className="text-4xl font-black text-center mb-8 leading-tight tracking-widest uppercase opacity-90">
+          Gringotts
+        </h1>
+        <div className="bg-[#1c1c1c]/60 backdrop-blur-2xl rounded-3xl p-8 border border-white/20 shadow-2xl">
+          {isRegistering ? (
+            <form onSubmit={handleRegister} className="space-y-6">
+              <h2 className="text-2xl font-bold text-center">Konto erstellen</h2>
+              <input type="text" value={name} onChange={(e) => setName(e.target.value)} className={commonInputStyles} placeholder="Dein Name" required />
+              <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} className={commonInputStyles} placeholder="E-Mail" required />
+              <div className="relative">
+                <input type={showPassword ? 'text' : 'password'} value={password} onChange={(e) => setPassword(e.target.value)} className={commonInputStyles} placeholder="Passwort" required />
+                <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute inset-y-0 right-0 pr-4 opacity-70">
+                  {showPassword ? <EyeSlashIcon /> : <EyeIcon />}
                 </button>
-            </div>
-        </div>
-      )}
-      <div className="min-h-screen flex items-center justify-center p-4 pt-24 md:pt-28">
-        <div className="w-full max-w-md mx-auto">
-          <h1 className="text-4xl sm:text-[3.25rem] font-black text-center mb-8 leading-tight">
-            Willkommen bei Gringotts
-          </h1>
-          <div className="bg-[#1c1c1c]/60 backdrop-blur-2xl rounded-3xl p-6 sm:p-8 border border-white/20 shadow-2xl">
-            {isRegistering ? (
-              <form onSubmit={handleRegister} className="space-y-6">
-                <h2 className="text-3xl sm:text-[2.25rem] font-bold text-center leading-tight">Neues Konto</h2>
-                <div>
-                  <label htmlFor="name-reg" className="block mb-2 text-sm font-medium opacity-80">Name</label>
-                  <input
-                    type="text"
-                    id="name-reg"
-                    value={name}
-                    onChange={(e) => setName(e.target.value)}
-                    className={commonInputStyles}
-                    placeholder="Name"
-                    required
-                  />
-                </div>
-                 <div>
-                  <div className="flex justify-between items-center mb-2">
-                    <label htmlFor="email-reg" className="text-sm font-medium opacity-80">E-Mail</label>
-                    <button type="button" onClick={() => setShowInfoModal(true)} aria-label="Informationen zur E-Mail-Nutzung">
-                        <InfoIcon className="w-5 h-5 opacity-70 hover:opacity-100 transition-opacity" />
-                    </button>
-                  </div>
-                  <input
-                    type="email"
-                    id="email-reg"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    className={commonInputStyles}
-                    placeholder="E-Mail"
-                    required
-                  />
-                </div>
-                 <div>
-                  <label htmlFor="password-reg" className="block mb-2 text-sm font-medium opacity-80">Passwort</label>
-                  <div className="relative">
-                    <input
-                      type={showPassword ? 'text' : 'password'}
-                      id="password-reg"
-                      value={password}
-                      onChange={(e) => setPassword(e.target.value)}
-                      className={commonInputStyles}
-                      placeholder="Passwort"
-                      required
-                    />
-                    <button
-                      type="button"
-                      onClick={() => setShowPassword(!showPassword)}
-                      className="absolute inset-y-0 right-0 flex items-center pr-4 text-white/70 hover:text-white"
-                      aria-label={showPassword ? "Passwort ausblenden" : "Passwort anzeigen"}
-                    >
-                      {showPassword ? <EyeSlashIcon /> : <EyeIcon />}
-                    </button>
-                  </div>
-                </div>
-                
-                {!isNifflerName && (
-                  <div className="animate-fadeIn">
-                    <label className="block mb-2 text-sm font-medium opacity-80">Haus</label>
-                    <div className="grid grid-cols-2 gap-4">
-                      {Object.values(House).filter(h => h !== House.Niffler).map((h) => (
-                        <button type="button" key={h} onClick={() => setHouse(h)} className={`p-4 rounded-2xl border-2 transition-all duration-300 text-center font-bold ${house === h ? `${houseDetails[h].color} bg-white/20 shadow-lg` : 'border-transparent bg-white/5 hover:bg-white/10'}`}>
-                            {houseDetails[h].label}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                {isNifflerName && (
-                  <div className="bg-yellow-500/10 border border-yellow-500/30 p-4 rounded-2xl text-center animate-fadeIn">
-                    <p className="text-yellow-500 font-black uppercase tracking-widest text-xs mb-1">Status: Niffler erkannt</p>
-                    <p className="text-[10px] opacity-60">Haus-Wahl wird für dich übersprungen, kleiner Dieb.</p>
-                  </div>
-                )}
-
-                {(localError || error) && <p className="text-red-400 text-sm text-center">{localError || error}</p>}
-                <button type="submit" className="w-full text-black bg-white hover:bg-gray-200 focus:ring-4 focus:outline-none focus:ring-gray-300 font-bold rounded-full text-base px-5 text-center transition-all duration-300 h-[3.75rem] hover:scale-[1.02] active:scale-[0.98]">
-                  Registrieren
-                </button>
-                <p className="text-sm text-center">
-                  Schon ein Konto?{' '}
-                  <button onClick={() => { setIsRegistering(false); clearForm(); }} className="font-bold text-white hover:underline" type="button">
-                    Hier einloggen
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                {Object.values(House).map((h) => (
+                  <button type="button" key={h} onClick={() => setHouse(h)} className={`p-3 rounded-xl border-2 transition-all font-bold text-sm ${house === h ? `${houseDetails[h].color} bg-white/10` : 'border-transparent bg-white/5 hover:bg-white/10'}`}>
+                      {houseDetails[h].label}
                   </button>
-                </p>
-              </form>
-            ) : (
-              <form onSubmit={handleLogin} className="space-y-6">
-                <h2 className="text-3xl sm:text-[2.25rem] font-bold text-center leading-tight">Einloggen</h2>
-                <div>
-                  <div className="flex justify-between items-center mb-2">
-                    <label htmlFor="email-login" className="text-sm font-medium opacity-80">E-Mail</label>
-                    <button type="button" onClick={() => setShowInfoModal(true)} aria-label="Informationen zur E-Mail-Nutzung">
-                        <InfoIcon className="w-5 h-5 opacity-70 hover:opacity-100 transition-opacity" />
-                    </button>
-                  </div>
-                   <input
-                    type="email"
-                    id="email-login"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    className={commonInputStyles}
-                    placeholder="E-Mail"
-                    required
-                  />
-                </div>
-                 <div>
-                  <label htmlFor="password-login" className="block mb-2 text-sm font-medium opacity-80">Passwort</label>
-                   <div className="relative">
-                    <input
-                      type={showPassword ? 'text' : 'password'}
-                      id="password-login"
-                      value={password}
-                      onChange={(e) => setPassword(e.target.value)}
-                      className={commonInputStyles}
-                      placeholder="Passwort"
-                      required
-                    />
-                    <button
-                      type="button"
-                      onClick={() => setShowPassword(!showPassword)}
-                      className="absolute inset-y-0 right-0 flex items-center pr-4 text-white/70 hover:text-white"
-                      aria-label={showPassword ? "Passwort ausblenden" : "Passwort anzeigen"}
-                    >
-                      {showPassword ? <EyeSlashIcon /> : <EyeIcon />}
-                    </button>
-                  </div>
-                </div>
-                {error && <p className="text-red-400 text-sm text-center">{error}</p>}
-                <button type="submit" className="w-full text-black bg-white hover:bg-gray-200 focus:ring-4 focus:outline-none focus:ring-gray-300 font-bold rounded-full text-base px-5 text-center transition-all duration-300 h-[3.75rem] hover:scale-[1.02] active:scale-[0.98]">
-                  Einloggen
+                ))}
+              </div>
+              {(localError || error) && <p className="text-red-400 text-sm text-center">{localError || error}</p>}
+              <button type="submit" className="w-full bg-white text-black py-4 rounded-full font-bold hover:bg-gray-200 transition-all">Konto erstellen</button>
+              <button onClick={() => setIsRegistering(false)} className="w-full text-sm opacity-60 hover:opacity-100" type="button">Bereits ein Konto? Login</button>
+            </form>
+          ) : (
+            <form onSubmit={handleLogin} className="space-y-6">
+              <h2 className="text-2xl font-bold text-center">Login</h2>
+              <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} className={commonInputStyles} placeholder="E-Mail" required />
+              <div className="relative">
+                <input type={showPassword ? 'text' : 'password'} value={password} onChange={(e) => setPassword(e.target.value)} className={commonInputStyles} placeholder="Passwort" required />
+                <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute inset-y-0 right-0 pr-4 opacity-70">
+                  {showPassword ? <EyeSlashIcon /> : <EyeIcon />}
                 </button>
-                <p className="text-sm text-center">
-                  Noch kein Konto?{' '}
-                  <button onClick={() => { setIsRegistering(true); clearForm(); }} className="font-bold text-white hover:underline" type="button">
-                    Jetzt registrieren
-                  </button>
-                </p>
-              </form>
-            )}
-          </div>
+              </div>
+              {error && <p className="text-red-400 text-sm text-center">{error}</p>}
+              <button type="submit" className="w-full bg-white text-black py-4 rounded-full font-bold hover:bg-gray-200 transition-all">Einloggen</button>
+              <button onClick={() => setIsRegistering(true)} className="w-full text-sm opacity-60 hover:opacity-100" type="button">Noch kein Konto? Registrieren</button>
+            </form>
+          )}
         </div>
       </div>
-    </>
+    </div>
   );
 };
 

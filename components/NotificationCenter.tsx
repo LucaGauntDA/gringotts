@@ -27,7 +27,7 @@ const Notification: React.FC<NotificationProps> = ({ notification, onRemove }) =
   useEffect(() => {
     const timer = setTimeout(() => {
       onRemove(notification.id);
-    }, 5000);
+    }, 1000);
 
     return () => {
       clearTimeout(timer);

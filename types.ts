@@ -1,9 +1,9 @@
 
 export interface User {
-  id: string; // UUID from Supabase Auth
+  id: string; 
   name: string;
   house: House;
-  balance: number; // In Knuts
+  balance: number; 
   is_deleted?: boolean;
   email?: string;
 }
@@ -23,8 +23,7 @@ export enum House {
   Gryffindor = 'Gryffindor',
   Hufflepuff = 'Hufflepuff',
   Ravenclaw = 'Ravenclaw',
-  Slytherin = 'Slytherin',
-  Niffler = 'Niffler'
+  Slytherin = 'Slytherin'
 }
 
 export interface Currency {
