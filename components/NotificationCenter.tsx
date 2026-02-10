@@ -25,9 +25,10 @@ interface NotificationProps {
 
 const Notification: React.FC<NotificationProps> = ({ notification, onRemove }) => {
   useEffect(() => {
+    // Erhöht auf 5000ms (5 Sekunden)
     const timer = setTimeout(() => {
       onRemove(notification.id);
-    }, 1000);
+    }, 5000);
 
     return () => {
       clearTimeout(timer);

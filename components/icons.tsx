@@ -1,3 +1,4 @@
+
 import React from 'react';
 
 export const LogoutIcon = ({ className = 'w-6 h-6' }: { className?: string }) => (
@@ -114,6 +115,40 @@ export const TrophyIcon = ({ className = 'w-6 h-6' }: { className?: string }) =>
       <path strokeLinecap="round" strokeLinejoin="round" d="M16.5 18.75h-9m9 0a3 3 0 013 3h-15a3 3 0 013-3m9 0v-3.375c0-.621-.503-1.125-1.125-1.125h-.871M7.5 18.75v-3.375c0-.621.504-1.125 1.125-1.125h.872m5.007 0H9.497m5.007 0a7.454 7.454 0 01-.982-3.172V9.418c0-1.645-1.065-3.085-2.572-3.46M9.497 5.958c-1.507.375-2.572 1.815-2.572 3.46v3.16c0 1.07-.329 2.078-.982 3.172m9.964 0a4.878 4.878 0 00-1.056-2.527 2.25 2.25 0 00-3.388-.314l-1.666 1.764m-4.708 0l-1.666-1.764a2.25 2.25 0 00-3.388.314 4.878 4.878 0 00-1.056 2.527" />
     </svg>
 );
+
+export const DiceIcon = ({ className = 'w-6 h-6' }: { className?: string }) => (
+  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className={className}>
+    {/* 3D Outline Cube */}
+    <path strokeLinecap="round" strokeLinejoin="round" d="M12 2.25l9 5.25v9l-9 5.25l-9-5.25v-9l9-5.25z" />
+    <path strokeLinecap="round" strokeLinejoin="round" d="M3 7.5l9 5.25m0 0l9-5.25m-9 5.25v9" />
+    
+    {/* Top Face - 1 Dot */}
+    <circle cx="12" cy="7.5" r="1.5" fill="currentColor" stroke="none" />
+    
+    {/* Left Face - 2 Dots */}
+    <circle cx="6" cy="12" r="1" fill="currentColor" stroke="none" />
+    <circle cx="9" cy="16" r="1" fill="currentColor" stroke="none" />
+    
+    {/* Right Face - 3 Dots */}
+    <circle cx="18" cy="12" r="1" fill="currentColor" stroke="none" />
+    <circle cx="15" cy="14.5" r="1" fill="currentColor" stroke="none" />
+    <circle cx="18" cy="17" r="1" fill="currentColor" stroke="none" />
+  </svg>
+);
+
+export const DiceIconSolid = ({ className = 'w-6 h-6' }: { className?: string }) => (
+  <svg viewBox="0 0 24 24" fill="currentColor" className={className}>
+    {/* Top Face */}
+    <path fillRule="evenodd" clipRule="evenodd" d="M12 2.25L21 7.5L12 12.75L3 7.5L12 2.25ZM12 7.5C12.8284 7.5 13.5 6.82843 13.5 6C13.5 5.17157 12.8284 4.5 12 4.5C11.1716 4.5 10.5 5.17157 10.5 6C10.5 6.82843 11.1716 7.5 12 7.5Z" />
+    
+    {/* Left Face */}
+    <path fillRule="evenodd" clipRule="evenodd" d="M2.25 8.25L11.25 13.5V22.5L2.25 17.25V8.25ZM6 11.25C6.82843 11.25 7.5 10.5784 7.5 9.75C7.5 8.92157 6.82843 8.25 6 8.25C5.17157 8.25 4.5 8.92157 4.5 9.75C4.5 10.5784 5.17157 11.25 6 11.25ZM9.75 16.5C10.5784 16.5 11.25 15.8284 11.25 15C11.25 14.1716 10.5784 13.5 9.75 13.5C8.92157 13.5 8.25 14.1716 8.25 15C8.25 15.8284 8.92157 16.5 9.75 16.5Z" opacity="0.8" />
+    
+    {/* Right Face */}
+    <path fillRule="evenodd" clipRule="evenodd" d="M12.75 13.5L21.75 8.25V17.25L12.75 22.5V13.5ZM18 11.25C18.8284 11.25 19.5 10.5784 19.5 9.75C19.5 8.92157 18.8284 8.25 18 8.25C17.1716 8.25 16.5 8.92157 16.5 9.75C16.5 10.5784 17.1716 11.25 18 11.25ZM15 13.875C15.8284 13.875 16.5 13.2034 16.5 12.375C16.5 11.5466 15.8284 10.875 15 10.875C14.1716 10.875 13.5 11.5466 13.5 12.375C13.5 13.2034 14.1716 13.875 15 13.875ZM18 16.5C18.8284 16.5 19.5 15.8284 19.5 15C19.5 14.1716 18.8284 13.5 18 13.5C17.1716 13.5 16.5 14.1716 16.5 15C16.5 15.8284 17.1716 16.5 18 16.5Z" opacity="0.6" />
+  </svg>
+);
+
 
 // Solid Icons for Tabs
 export const SendIconSolid = ({ className = 'w-6 h-6' }: { className?: string }) => (

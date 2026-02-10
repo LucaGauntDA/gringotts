@@ -29,6 +29,15 @@
       background: rgba(255, 255, 255, 0.2);
       border-radius: 4px;
     }
+
+    /* Utility to hide scrollbar but keep functionality */
+    .no-scrollbar::-webkit-scrollbar {
+      display: none;
+    }
+    .no-scrollbar {
+      -ms-overflow-style: none;
+      scrollbar-width: none;
+    }
   </style>
 
   <script src="https://cdn.tailwindcss.com"></script>

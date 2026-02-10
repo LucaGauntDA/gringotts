@@ -5,13 +5,15 @@ export interface User {
   house: House;
   balance: number; 
   is_deleted?: boolean;
+  is_admin?: boolean;
   email?: string;
+  profile_image_url?: string;
 }
 
 export interface Transaction {
   id: string;
-  sender_id: string;
-  receiver_id: string;
+  sender_id: string | null;
+  receiver_id: string | null;
   amount: number;
   created_at: string;
   note?: string;
