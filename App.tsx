@@ -340,8 +340,46 @@ const App: React.FC = () => {
 
   const handleUpdateUser = async (userId: string, updates: any) => {
     try {
+      // Protokollierung von Kontostands-Änderungen durch Admin
+      const oldUser = users.find(u => u.id === userId);
+      if (oldUser && updates.balance !== undefined && updates.balance !== oldUser.balance) {
+          const diff = updates.balance - oldUser.balance;
+          const absDiff = Math.abs(diff);
+          
+          const adminId = currentUser?.id || null;
+          
+          // Wir versuchen, die Transaktion korrekt zu loggen.
+          // Bei einer Abbuchung (diff < 0) wäre der User der Sender und Admin der Empfänger.
+          // Falls RLS dies verbietet (weil auth.uid() != sender_id), fangen wir den Fehler ab, damit das Update trotzdem durchgeht.
+          
+          const transactionPayload = {
+              sender_id: diff > 0 ? adminId : userId,
+              receiver_id: diff > 0 ? userId : adminId,
+              amount: absDiff,
+              note: `Admin-Korrektur: ${diff > 0 ? 'Gutschrift' : 'Abbuchung'}`
+          };
+          
+          const { error: logError } = await supabase.from('transactions').insert(transactionPayload);
+          
+          if (logError) {
+              console.error("Transaktions-Log fehlgeschlagen (evtl. RLS Rechte):", logError);
+              // Fallback: Wenn wir als User nicht senden dürfen, loggen wir es als "System-Nachricht" vom Admin an den User mit spezieller Notiz.
+              // Dies ist besser als gar kein Log.
+              if (diff < 0) {
+                  await supabase.from('transactions').insert({
+                      sender_id: adminId,
+                      receiver_id: userId,
+                      amount: absDiff,
+                      note: `Admin-Korrektur: MANUELLE ABBUCHUNG (-${absDiff} Knuts)`
+                  });
+              }
+          }
+      }
+
       const { error } = await supabase.from('users').update(updates).eq('id', userId);
       if (error) throw error;
+      
+      addNotification("Benutzer erfolgreich aktualisiert.", "success");
       await refreshData();
     } catch (e: any) {
       addNotification(e.message, "error");

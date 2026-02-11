@@ -1,22 +1,26 @@
-
 import { createClient } from '@supabase/supabase-js';
 
-// Helper to safely access environment variables
-const getEnv = (key: string): string | undefined => {
+// Versuche Umgebungsvariablen zu lesen, falls verfügbar (Vite oder Node), sonst Fallback auf Hardcoded Werte.
+// Dies verhindert Abstürze in reinen Browser-Umgebungen, wo 'process' nicht definiert ist.
+const getEnvVar = (key: string, fallback: string): string => {
   try {
-    return typeof process !== 'undefined' && process.env ? process.env[key] : undefined;
-  } catch {
-    return undefined;
+    // Check for Vite
+    if (typeof import.meta !== 'undefined' && (import.meta as any).env && (import.meta as any).env[key]) {
+      return (import.meta as any).env[key];
+    }
+    // Check for Node/Process
+    if (typeof process !== 'undefined' && process.env && process.env[key]) {
+      return process.env[key];
+    }
+  } catch (e) {
+    // Ignore errors
   }
+  return fallback;
 };
 
-const supabaseUrl = getEnv('SUPABASE_URL') || "https://xyzeaywhfjetvlijfqzo.supabase.co";
-const supabaseAnonKey = getEnv('SUPABASE_ANON_KEY') || "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inh5emVheXdoZmpldHZsaWpmcXpvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjEzMjY1NDAsImV4cCI6MjA3NjkwMjU0MH0.QEvXEIXqgxLUznSMzsdwK9eH1Us59JcUiDH0EHZVQLg";
+const supabaseUrl = getEnvVar('SUPABASE_URL', "https://xyzeaywhfjetvlijfqzo.supabase.co");
+const supabaseAnonKey = getEnvVar('SUPABASE_ANON_KEY', "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inh5emVheXdoZmpldHZsaWpmcXpvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjEzMjY1NDAsImV4cCI6MjA3NjkwMjU0MH0.QEvXEIXqgxLUznSMzsdwK9eH1Us59JcUiDH0EHZVQLg");
 
-export const isSupabaseConfigured = supabaseUrl !== "https://example.supabase.co" && supabaseAnonKey !== "example-anon-key";
-
-if (!isSupabaseConfigured) {
-  console.warn("WICHTIG: Du musst deine Supabase-Zugangsdaten in der Datei 'supabaseClient.ts' eintragen. Ersetze die Beispiel-URL und den Beispiel-Key durch deine echten Werte.");
-}
+export const isSupabaseConfigured = supabaseUrl !== "https://example.supabase.co";
 
 export const supabase = createClient(supabaseUrl, supabaseAnonKey);

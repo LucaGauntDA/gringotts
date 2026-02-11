@@ -1,8 +1,8 @@
 
 import React, { useState } from 'react';
-import { User, Transaction, House, BettingEvent, BettingEventStatus } from '../types';
+import { User, Transaction, House } from '../types';
 import { knutsToCanonical, currencyToKnuts } from '../utils';
-import { TrashIcon, RestoreIcon, UserEditIcon, AdminIcon } from './icons';
+import { TrashIcon, RestoreIcon, UserEditIcon, AdminIcon, HistoryIcon, SendIcon } from './icons';
 
 interface AdminViewProps {
   currentUser: User;
@@ -29,17 +29,28 @@ const houseBorderColors: { [key: string]: string } = {
 
 const AdminView: React.FC<AdminViewProps> = ({ 
     users, 
+    globalTransactions,
     onUpdateUser, onSoftDeleteUser, onRestoreUser 
 }) => {
     const [editingUser, setEditingUser] = useState<User | null>(null);
     const [editForm, setEditForm] = useState({ name: '', house: House.Gryffindor, g: 0, s: 0, k: 0, is_admin: false });
     const [showDeleted, setShowDeleted] = useState(false);
     const [userSearch, setUserSearch] = useState('');
+    const [historySearch, setHistorySearch] = useState('');
 
     const sortedUsers = [...users]
         .filter(u => showDeleted ? true : !u.is_deleted)
         .filter(u => u.name.toLowerCase().includes(userSearch.toLowerCase()))
         .sort((a, b) => a.name.localeCompare(b.name));
+
+    const filteredHistory = globalTransactions
+        .filter(t => {
+            const search = historySearch.toLowerCase();
+            const senderName = t.sender?.name?.toLowerCase() || 'system';
+            const receiverName = t.receiver?.name?.toLowerCase() || 'system';
+            const note = t.note?.toLowerCase() || '';
+            return senderName.includes(search) || receiverName.includes(search) || note.includes(search);
+        });
 
     const handleEditClick = (user: User) => {
         const c = knutsToCanonical(user.balance);
@@ -66,7 +77,7 @@ const AdminView: React.FC<AdminViewProps> = ({
             {/* NUTZER-VERWALTUNG */}
              <div className="bg-[#1c1c1c]/60 backdrop-blur-2xl rounded-3xl p-6 border border-white/20">
                 <div className="flex justify-between items-center mb-6">
-                    <h2 className="text-3xl font-bold">Nutzer-Verwaltung</h2>
+                    <h2 className="text-2xl md:text-3xl font-bold">Nutzer-Verwaltung</h2>
                     <div className="flex items-center gap-2 text-xs opacity-60">
                          <span>Gelöschte anzeigen</span>
                          <button onClick={() => setShowDeleted(!showDeleted)} className={`w-8 h-4 rounded-full p-0.5 transition-colors ${showDeleted ? 'bg-green-500' : 'bg-white/20'}`}>
@@ -74,7 +85,7 @@ const AdminView: React.FC<AdminViewProps> = ({
                          </button>
                     </div>
                 </div>
-                <input value={userSearch} onChange={e => setUserSearch(e.target.value)} placeholder="Nutzer suchen..." className="w-full p-3 bg-black border border-white/10 rounded-xl mb-6" />
+                <input value={userSearch} onChange={e => setUserSearch(e.target.value)} placeholder="Nutzer suchen..." className="w-full p-3 bg-black border border-white/10 rounded-xl mb-6 focus:outline-none focus:border-white/30 transition-all" />
 
                 {editingUser && (
                     <div className="mb-8 p-6 bg-blue-500/10 rounded-2xl border border-blue-500/30 space-y-4 animate-fadeIn">
@@ -129,6 +140,64 @@ const AdminView: React.FC<AdminViewProps> = ({
                             </div>
                          )
                     })}
+                </div>
+            </div>
+
+            {/* ADMIN-VERLAUF (NEU) */}
+            <div className="bg-[#1c1c1c]/60 backdrop-blur-2xl rounded-3xl p-6 border border-white/20">
+                <div className="flex items-center gap-3 mb-6">
+                    <HistoryIcon className="w-8 h-8 text-white/80" />
+                    <h2 className="text-2xl md:text-3xl font-bold">Admin-Verlauf</h2>
+                </div>
+                
+                <input 
+                    value={historySearch} 
+                    onChange={e => setHistorySearch(e.target.value)} 
+                    placeholder="Verlauf durchsuchen (Name, Notiz)..." 
+                    className="w-full p-3 bg-black border border-white/10 rounded-xl mb-6 focus:outline-none focus:border-white/30 transition-all" 
+                />
+
+                <div className="space-y-2 max-h-[600px] overflow-y-auto pr-2 custom-scrollbar">
+                    {filteredHistory.length === 0 ? (
+                        <p className="text-center p-10 text-white/30">Keine Transaktionen gefunden.</p>
+                    ) : (
+                        filteredHistory.map(t => {
+                            const c = knutsToCanonical(t.amount);
+                            const date = new Date(t.created_at).toLocaleString('de-DE', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+                            const isBetWin = t.note?.startsWith('Wettgewinn');
+                            const isBetStake = t.note?.startsWith('Wetteinsatz');
+                            
+                            // Styling Helfer
+                            const senderHouse = t.sender?.house as House;
+                            const receiverHouse = t.receiver?.house as House;
+
+                            return (
+                                <div key={t.id} className="p-4 bg-white/5 border border-white/10 rounded-2xl flex flex-col md:flex-row md:items-center justify-between gap-4">
+                                    <div className="flex items-center gap-4">
+                                        <div className="bg-white/10 p-2 rounded-full shrink-0">
+                                            <SendIcon className="w-4 h-4 text-white/60" />
+                                        </div>
+                                        <div className="text-sm">
+                                            <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                                                <span className={`font-bold ${houseColors[senderHouse] || 'text-white/40'}`}>
+                                                    {t.sender?.name || 'Wettbüro'}
+                                                </span>
+                                                <span className="text-white/30">➜</span>
+                                                <span className={`font-bold ${houseColors[receiverHouse] || 'text-white/40'}`}>
+                                                    {t.receiver?.name || 'Wettbüro'}
+                                                </span>
+                                            </div>
+                                            {t.note && <p className="text-white/50 italic text-xs mt-1">{t.note}</p>}
+                                            <p className="text-[10px] text-white/20 mt-1 uppercase tracking-widest">{date}</p>
+                                        </div>
+                                    </div>
+                                    <div className={`text-right font-mono font-bold whitespace-nowrap text-sm ${isBetWin ? 'text-green-400' : isBetStake ? 'text-yellow-400' : 'text-blue-400'}`}>
+                                        {c.galleons > 0 && `${c.galleons}G `}{c.sickles > 0 && `${c.sickles}S `}{c.knuts > 0 && `${c.knuts}K`}
+                                    </div>
+                                </div>
+                            );
+                        })
+                    )}
                 </div>
             </div>
         </div>
