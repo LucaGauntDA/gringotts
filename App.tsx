@@ -66,7 +66,7 @@ const App: React.FC = () => {
       }
       
       // Update User Data
-      setCurrentUser(prev => currentUserData);
+      setCurrentUser(currentUserData);
 
       setIsKing(KING_EMAILS.some(e => e.toLowerCase() === userEmail) || currentUserData?.is_admin === true);
       
@@ -106,7 +106,7 @@ const App: React.FC = () => {
         console.error("Daten-Sync Fehler", err);
       }
     }
-  }, [addNotification]);
+  }, []);
 
   useEffect(() => {
     if (!isSupabaseConfigured) {
@@ -121,6 +121,7 @@ const App: React.FC = () => {
   const handleLogout = async () => {
     try {
       await supabase.auth.signOut();
+      // Explizites Zurücksetzen aller Zustände für den Redirect zum Login-Screen
       setCurrentUser(null);
       setUsers([]);
       setTransactions([]);
@@ -128,6 +129,8 @@ const App: React.FC = () => {
       setBets([]);
       setIsKing(false);
       setGlobalTransactions([]);
+      setEmailForVerification(null);
+      setAuthError(null);
     } catch (err) {
       addNotification("Abmelden fehlgeschlagen", "error");
     }
@@ -227,9 +230,8 @@ const App: React.FC = () => {
 
       if (transError) {
          console.error("Transaktion konnte nicht gespeichert werden:", transError);
-         await supabase.from('bets').delete().match({ event_id: eventId, user_id: currentUser.id });
-         await supabase.from('users').update({ balance: oldBalance }).eq('id', currentUser.id);
-         throw new Error("Fehler beim Speichern im Verlauf. Die Wette wurde abgebrochen.");
+         await refreshData();
+         throw new Error("Fehler beim Speichern im Verlauf.");
       }
 
       addNotification("Wette erfolgreich platziert!", "success");
@@ -274,8 +276,6 @@ const App: React.FC = () => {
       const event = bettingEvents.find(e => e.id === eventId);
       const winnerName = winner === 'A' ? event?.option_a : event?.option_b;
 
-      console.log(`Resolving Event ${eventId}. Total Pool: ${totalPool}, Winning Pool: ${winningPool}`);
-
       if (winningPool > 0) {
         let errorCount = 0;
         for (const bet of winningBets) {
@@ -283,39 +283,23 @@ const App: React.FC = () => {
           const payout = Math.floor(share * totalPool); 
 
           if (payout > 0) {
-            // Hole aktuelle Balance
             const { data: winnerUser } = await supabase.from('users').select('balance').eq('id', bet.user_id).single();
             
             if (winnerUser) {
               const newBalance = winnerUser.balance + payout;
-              
-              // A. Update Balance
               await supabase.from('users').update({ balance: newBalance }).eq('id', bet.user_id);
               
-              // B. Erstelle Gewinn-Transaktion
-              // WORKAROUND: Wir nutzen die ID des Admins (currentUser) als sender_id.
-              // Da der Admin ein eingeloggter User ist, erlaubt Supabase das Insert.
-              // Das Dashboard wird so angepasst, dass es bei "Wettgewinn" nicht den Namen des Admins anzeigt, sondern "Wettbüro".
-              const { error: payoutError } = await supabase.from('transactions').insert({
+              await supabase.from('transactions').insert({
                 sender_id: currentUser.id, 
                 receiver_id: bet.user_id,
                 amount: payout,
-                note: `Wettgewinn: ${event?.title} (${winnerName}) - Quote: ${(totalPool/winningPool).toFixed(2)}`
+                note: `Wettgewinn: ${event?.title} (${winnerName})`
               });
-
-              if (payoutError) {
-                  console.error("CRITICAL: Payout Transaction Failed", payoutError);
-                  errorCount++;
-              }
             }
           }
         }
-        if (errorCount > 0) {
-          addNotification(`Achtung: ${errorCount} Transaktionen konnten nicht gespeichert werden. Kontostände wurden aber aktualisiert.`, "error");
-        }
       }
 
-      // Status Update des Events
       const { error: updateError } = await supabase
         .from('betting_events')
         .update({ status: BettingEventStatus.RESOLVED, winner: winner })
@@ -323,11 +307,10 @@ const App: React.FC = () => {
       
       if (updateError) throw updateError;
 
-      addNotification(`Wette aufgelöst! ${winningBets.length} Gewinner ausgezahlt.`, "success");
+      addNotification(`Wette aufgelöst! Gewinner ausgezahlt.`, "success");
       await refreshData();
 
     } catch (e: any) {
-      console.error("Fehler beim Auflösen:", e);
       addNotification("Fehler beim Auflösen: " + e.message, "error");
     }
   };
@@ -344,7 +327,7 @@ const App: React.FC = () => {
   };
 
   const handleDeleteBetEvent = async (eventId: string) => {
-    if (!window.confirm("Dieses Event und alle zugehörigen Wetten wirklich löschen?")) return;
+    if (!window.confirm("Dieses Event wirklich löschen?")) return;
     try {
       const { error } = await supabase.from('betting_events').delete().eq('id', eventId);
       if (error) throw error;

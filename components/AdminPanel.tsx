@@ -13,6 +13,20 @@ interface AdminViewProps {
   onRestoreUser: (userId: string) => Promise<void>;
 }
 
+const houseColors: { [key: string]: string } = {
+    Gryffindor: 'text-[#FF5C5C]',
+    Hufflepuff: 'text-[#FFD700]',
+    Ravenclaw: 'text-[#4DA6FF]',
+    Slytherin: 'text-[#2ECC71]',
+};
+
+const houseBorderColors: { [key: string]: string } = {
+    Gryffindor: 'border-l-[#FF5C5C]',
+    Hufflepuff: 'border-l-[#FFD700]',
+    Ravenclaw: 'border-l-[#4DA6FF]',
+    Slytherin: 'border-l-[#2ECC71]',
+};
+
 const AdminView: React.FC<AdminViewProps> = ({ 
     users, 
     onUpdateUser, onSoftDeleteUser, onRestoreUser 
@@ -92,11 +106,19 @@ const AdminView: React.FC<AdminViewProps> = ({
                 <div className="space-y-2 max-h-[400px] overflow-y-auto pr-2 custom-scrollbar">
                     {sortedUsers.map(u => {
                          const c = knutsToCanonical(u.balance);
+                         const houseColorClass = houseColors[u.house] || 'text-white';
+                         const houseBorderClass = houseBorderColors[u.house] || 'border-l-transparent';
+                         
                          return (
-                            <div key={u.id} className={`flex items-center justify-between p-3 rounded-xl border ${u.is_deleted ? 'border-red-500/30 opacity-60' : 'border-white/10 bg-white/5'}`}>
+                            <div key={u.id} className={`flex items-center justify-between p-3 rounded-xl border-t border-r border-b border-white/10 bg-white/5 border-l-4 ${houseBorderClass} ${u.is_deleted ? 'opacity-40 grayscale-[0.5]' : ''}`}>
                                 <div className="flex items-center gap-3">
                                     {u.is_admin && <AdminIcon className="w-4 h-4 text-yellow-500 shrink-0" />}
-                                    <div><p className="font-bold">{u.name}</p><p className="text-[10px] opacity-60">{c.galleons}G {c.sickles}S {c.knuts}K • {u.house}</p></div>
+                                    <div>
+                                        <p className={`font-bold ${houseColorClass}`}>{u.name}</p>
+                                        <p className="text-[10px] opacity-60">
+                                            {c.galleons}G {c.sickles}S {c.knuts}K • <span className={houseColorClass}>{u.house}</span>
+                                        </p>
+                                    </div>
                                 </div>
                                 <div className="flex gap-2">
                                      <button onClick={()=>handleEditClick(u)} className="p-2 hover:bg-white/10 rounded-lg"><UserEditIcon className="w-5 h-5"/></button>

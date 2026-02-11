@@ -17,7 +17,8 @@ const houseDetails = {
 }
 
 const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin, onRegister, error }) => {
-  const [isRegistering, setIsRegistering] = useState(true);
+  // Geändert auf false, damit standardmäßig der Login-Screen angezeigt wird
+  const [isRegistering, setIsRegistering] = useState(false);
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
