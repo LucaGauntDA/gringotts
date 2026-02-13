@@ -7,6 +7,7 @@ interface LoginScreenProps {
   onLogin: (identifier: string, password: string) => void;
   onRegister: (name: string, house: House, password: string, email: string) => void;
   error: string | null;
+  isLoading?: boolean;
 }
 
 const houseDetails = {
@@ -16,7 +17,7 @@ const houseDetails = {
     [House.Ravenclaw]: { color: "border-blue-500", label: "Ravenclaw" },
 }
 
-const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin, onRegister, error }) => {
+const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin, onRegister, error, isLoading = false }) => {
   // Geändert auf false, damit standardmäßig der Login-Screen angezeigt wird
   const [isRegistering, setIsRegistering] = useState(false);
   const [name, setName] = useState('');
@@ -53,9 +54,17 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin, onRegister, error })
         <h1 className="text-4xl font-black text-center mb-8 leading-tight tracking-widest uppercase opacity-90">
           Gringotts
         </h1>
-        <div className="bg-[#1c1c1c]/60 backdrop-blur-2xl rounded-3xl p-8 border border-white/20 shadow-2xl">
-          {isRegistering ? (
-            <form onSubmit={handleRegister} className="space-y-6">
+        <div className="bg-[#1c1c1c]/60 backdrop-blur-2xl rounded-3xl p-8 border border-white/20 shadow-2xl min-h-[400px] flex flex-col justify-center">
+          {isLoading ? (
+            <div className="space-y-6 animate-pulse w-full">
+              <div className="h-8 bg-white/10 rounded-lg w-1/3 mx-auto mb-8"></div>
+              <div className="h-14 bg-white/5 rounded-2xl w-full border border-white/5"></div>
+              <div className="h-14 bg-white/5 rounded-2xl w-full border border-white/5"></div>
+              <div className="h-14 bg-white/10 rounded-full w-full mt-6"></div>
+              <div className="h-4 bg-white/5 rounded w-1/2 mx-auto mt-4"></div>
+            </div>
+          ) : isRegistering ? (
+            <form onSubmit={handleRegister} className="space-y-6 animate-fadeIn">
               <h2 className="text-2xl font-bold text-center">Konto erstellen</h2>
               <input type="text" value={name} onChange={(e) => setName(e.target.value)} className={commonInputStyles} placeholder="Dein Name" required />
               <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} className={commonInputStyles} placeholder="E-Mail" required />
@@ -77,7 +86,7 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin, onRegister, error })
               <button onClick={() => setIsRegistering(false)} className="w-full text-sm opacity-60 hover:opacity-100" type="button">Bereits ein Konto? Login</button>
             </form>
           ) : (
-            <form onSubmit={handleLogin} className="space-y-6">
+            <form onSubmit={handleLogin} className="space-y-6 animate-fadeIn">
               <h2 className="text-2xl font-bold text-center">Login</h2>
               <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} className={commonInputStyles} placeholder="E-Mail" required />
               <div className="relative">

@@ -6,7 +6,7 @@ import LoginScreen from './components/LoginScreen';
 import OtpScreen from './components/OtpScreen';
 import Dashboard from './components/Dashboard';
 import Header from './components/Header';
-import LoadingScreen from './components/LoadingScreen';
+// import LoadingScreen from './components/LoadingScreen'; // Entfernt
 import AccountDeletedScreen from './components/AccountDeletedScreen';
 import ConnectionErrorScreen from './components/ConnectionErrorScreen';
 import NotificationCenter from './components/NotificationCenter';
@@ -109,19 +109,40 @@ const App: React.FC = () => {
   }, []);
 
   useEffect(() => {
+    // Timeout-Failsafe: Wenn nach 60 Sekunden nichts passiert ist (loading hängt), erzwingen wir das Ende des Ladezustands.
+    // Dies zeigt dann den interaktiven Login-Screen an.
+    const timeoutTimer = setTimeout(() => {
+        setLoading(false);
+    }, 60000);
+
     if (!isSupabaseConfigured) {
       setLoading(false);
       return;
     }
+    
+    // Initial data load
     refreshData().finally(() => setLoading(false));
-    const { data: authListener } = supabase.auth.onAuthStateChange(() => refreshData());
-    return () => authListener.subscription.unsubscribe();
+
+    // Subscribe to auth changes to reload data and handle loading state for login/logout
+    const { data: authListener } = supabase.auth.onAuthStateChange(async (event) => {
+      // Force refresh on any auth change
+      await refreshData();
+      // If we were in a loading state (e.g. login/logout), this indicates we are done syncing
+      setLoading(false); 
+    });
+
+    return () => {
+        authListener.subscription.unsubscribe();
+        clearTimeout(timeoutTimer);
+    };
   }, [refreshData]);
 
   const handleLogout = async () => {
+    setLoading(true); // Start loading screen during logout
     try {
       await supabase.auth.signOut();
-      // Explizites Zurücksetzen aller Zustände für den Redirect zum Login-Screen
+      // State reset happens in refreshData via onAuthStateChange, which also turns off loading
+      // Explicitly reset sensitive states here just in case
       setCurrentUser(null);
       setUsers([]);
       setTransactions([]);
@@ -133,6 +154,7 @@ const App: React.FC = () => {
       setAuthError(null);
     } catch (err) {
       addNotification("Abmelden fehlgeschlagen", "error");
+      setLoading(false); // Stop loading if error
     }
   };
 
@@ -348,10 +370,6 @@ const App: React.FC = () => {
           
           const adminId = currentUser?.id || null;
           
-          // Wir versuchen, die Transaktion korrekt zu loggen.
-          // Bei einer Abbuchung (diff < 0) wäre der User der Sender und Admin der Empfänger.
-          // Falls RLS dies verbietet (weil auth.uid() != sender_id), fangen wir den Fehler ab, damit das Update trotzdem durchgeht.
-          
           const transactionPayload = {
               sender_id: diff > 0 ? adminId : userId,
               receiver_id: diff > 0 ? userId : adminId,
@@ -363,8 +381,6 @@ const App: React.FC = () => {
           
           if (logError) {
               console.error("Transaktions-Log fehlgeschlagen (evtl. RLS Rechte):", logError);
-              // Fallback: Wenn wir als User nicht senden dürfen, loggen wir es als "System-Nachricht" vom Admin an den User mit spezieller Notiz.
-              // Dies ist besser als gar kein Log.
               if (diff < 0) {
                   await supabase.from('transactions').insert({
                       sender_id: adminId,
@@ -410,26 +426,37 @@ const App: React.FC = () => {
 
   const handleLogin = async (email: string, pass: string) => {
     setAuthError(null);
+    setLoading(true); // START LOADING
     try {
       const { error } = await supabase.auth.signInWithPassword({ email, password: pass });
       if (error) throw error;
+      // Loading is stopped in useEffect listener when auth state changes and data refreshes
     } catch (e: any) {
       setAuthError(e.message);
+      setLoading(false); // STOP LOADING ON ERROR
     }
   };
 
   const handleRegister = async (name: string, house: House, pass: string, email: string) => {
     setAuthError(null);
+    setLoading(true); // START LOADING
     try {
       const { data, error } = await supabase.auth.signUp({ email, password: pass, options: { data: { name, house, balance: 0 } } });
       if (error) throw error;
-      if (data.user && !data.session) setEmailForVerification(email);
+      if (data.user && !data.session) {
+        setEmailForVerification(email);
+        setLoading(false); // Stop loading if verification needed
+      }
+      // If session exists, listener will handle stopping loading
     } catch (e: any) {
       setAuthError(e.message);
+      setLoading(false); // STOP LOADING ON ERROR
     }
   };
 
-  if (loading) return <LoadingScreen />;
+  // Hinweis: loading check wurde entfernt, damit stattdessen der LoginScreen als "Outline" genutzt wird.
+  // if (loading) return <LoadingScreen />; 
+
   if (connectionError) return <ConnectionErrorScreen message={connectionError} onRetry={() => { setLoading(true); refreshData().finally(() => setLoading(false)); }} />;
   if (currentUser?.is_deleted) return <AccountDeletedScreen />;
   if (emailForVerification) return <OtpScreen email={emailForVerification} onVerify={async (e, t) => {
@@ -437,7 +464,10 @@ const App: React.FC = () => {
     if (error) setAuthError(error.message); else setEmailForVerification(null);
   }} onBack={() => setEmailForVerification(null)} error={authError} />;
   
-  if (!currentUser) return <LoginScreen onLogin={handleLogin} onRegister={handleRegister} error={authError} />;
+  // Wenn currentUser existiert, zeigen wir das Dashboard.
+  // Wenn nicht (oder noch laden), zeigen wir LoginScreen. 
+  // Das isLoading Prop sorgt dafür, dass während des Ladens ein Skeleton (Outline) angezeigt wird.
+  if (!currentUser) return <LoginScreen onLogin={handleLogin} onRegister={handleRegister} error={authError} isLoading={loading} />;
 
   return (
     <div className="bg-[#121212] min-h-screen text-white font-sans">
